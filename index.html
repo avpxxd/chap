@@ -3,371 +3,267 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PulseChat — Real-Time Free Firebase Room & File Chat</title>
-  <meta name="description" content="A 100% free real-time web chat app powered by Firebase Cloud Firestore. Create rooms, share links with friends, send voice notes, and share files.">
+  <title>PulseChat - Live Realtime Chat</title>
+  <meta name="description" content="A sleek, instant live chat application with public channels and private room codes. Powered by Firebase Realtime Database.">
   
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
   
-  <!-- FontAwesome Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  
   <!-- Main Stylesheet -->
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body class="dark-theme">
-
-  <!-- Background Animated Orbs -->
-  <div class="bg-gradient-orb orb-1"></div>
-  <div class="bg-gradient-orb orb-2"></div>
-  <div class="bg-gradient-orb orb-3"></div>
-
-  <!-- App Wrapper -->
-  <div class="app-container">
-    
+  <div id="app" class="app-container">
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="fa-solid fa-bolt"></i>
-          </div>
-          <div class="brand-text">
-            <h2>PulseChat</h2>
-            <span class="badge badge-pulse" id="backend-status-badge">
-              <i class="fa-solid fa-circle text-success"></i> Demo Mode
-            </span>
-          </div>
+      <div class="brand">
+        <div class="brand-logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            <circle cx="9" cy="10" r="1" fill="currentColor"></circle>
+            <circle cx="12" cy="10" r="1" fill="currentColor"></circle>
+            <circle cx="15" cy="10" r="1" fill="currentColor"></circle>
+          </svg>
         </div>
-        <button class="icon-btn mobile-only" id="close-sidebar-btn" title="Close Sidebar">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <!-- User Card -->
-      <div class="user-card" id="user-profile-trigger">
-        <div class="avatar" id="current-user-avatar" style="background: linear-gradient(135deg, #6366f1, #a855f7);">
-          ⚡
+        <div class="brand-text">
+          <h2>PulseChat</h2>
+          <span class="online-status-pill">
+            <span class="status-dot"></span> Realtime
+          </span>
         </div>
-        <div class="user-info">
-          <h4 id="current-user-name">Guest User</h4>
-          <span class="user-status"><i class="fa-solid fa-circle text-online"></i> Online</span>
-        </div>
-        <button class="icon-btn-sm" title="Edit Profile">
-          <i class="fa-solid fa-pen-to-square"></i>
-        </button>
+        <button class="mobile-close-btn" id="closeSidebarBtn" aria-label="Close sidebar">✕</button>
       </div>
 
-      <!-- Actions -->
-      <div class="sidebar-actions">
-        <button class="btn btn-primary" id="create-room-btn">
-          <i class="fa-solid fa-plus"></i> New Room
-        </button>
-        <button class="btn btn-secondary" id="setup-guide-btn">
-          <i class="fa-solid fa-fire"></i> Free Guide
-        </button>
-      </div>
-
-      <!-- Quick Join Input -->
-      <div class="search-box">
-        <i class="fa-solid fa-right-to-bracket"></i>
-        <input type="text" id="join-room-input" placeholder="Paste Room Code or ID...">
-        <button id="join-room-btn" title="Join Room"><i class="fa-solid fa-arrow-right"></i></button>
-      </div>
-
-      <!-- Active Rooms -->
+      <!-- Public Rooms Section -->
       <div class="sidebar-section">
         <div class="section-title">
-          <span>Active Rooms</span>
-          <span class="count-pill" id="room-count">1</span>
+          <span>PUBLIC CHANNELS</span>
         </div>
-        <div class="room-list" id="room-list"></div>
+        <nav class="room-list" id="publicRoomsList">
+          <!-- Dynamically populated public rooms -->
+        </nav>
       </div>
 
-      <!-- Footer -->
-      <div class="sidebar-footer">
-        <button class="footer-link-btn" id="open-config-btn">
-          <i class="fa-solid fa-gear"></i> Firebase Settings
+      <!-- Private Rooms Section -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>MY PRIVATE ROOMS</span>
+          <button class="icon-btn-sm" id="openCreateRoomModalBtn" title="Create Private Room">+</button>
+        </div>
+        <nav class="room-list" id="privateRoomsList">
+          <div class="empty-rooms-hint">No private rooms joined yet.</div>
+        </nav>
+        <button class="btn btn-outline btn-full mt-2" id="openJoinRoomModalBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+          Join via Code
         </button>
-        <button class="footer-link-btn" id="toggle-theme-btn">
-          <i class="fa-solid fa-moon" id="theme-icon"></i> <span id="theme-label">Dark Mode</span>
+      </div>
+
+      <!-- User Profile Card in Sidebar -->
+      <div class="user-profile-card">
+        <div class="user-avatar" id="currentUserAvatar">?</div>
+        <div class="user-info">
+          <div class="user-name-wrapper">
+            <span class="user-name" id="currentUserName">Guest User</span>
+            <button class="edit-name-btn" id="editNameBtn" title="Edit Nickname">✏️</button>
+          </div>
+          <span class="user-id-sub" id="currentUserIdSub">Connecting...</span>
+        </div>
+        <button class="icon-btn" id="audioToggleBtn" title="Toggle Sound Effects">
+          <svg id="soundOnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+          <svg id="soundOffIcon" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
         </button>
       </div>
     </aside>
 
-    <!-- Main Workspace -->
-    <main class="chat-workspace">
-      
-      <!-- Room Header -->
+    <!-- Sidebar Backdrop for Mobile -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Main Chat Area -->
+    <main class="chat-main">
+      <!-- Chat Header -->
       <header class="chat-header">
         <div class="header-left">
-          <button class="icon-btn mobile-only" id="open-sidebar-btn" title="Open Sidebar">
-            <i class="fa-solid fa-bars"></i>
+          <button class="mobile-toggle-btn" id="mobileMenuBtn" aria-label="Open menu">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
-          <div class="room-details">
-            <div class="room-icon-badge" id="current-room-icon">💬</div>
-            <div>
-              <h3 id="current-room-name">General Lounge</h3>
-              <p class="room-meta">
-                <i class="fa-solid fa-bolt text-success"></i> <span>100% Free Mode</span>
-                <span class="divider">•</span>
-                <span id="room-id-tag">ID: general</span>
-              </p>
+          <div class="channel-info">
+            <div class="channel-header-row">
+              <h1 class="channel-title" id="activeRoomTitle">#general</h1>
+              <span class="badge" id="activeRoomBadge">Public</span>
             </div>
+            <p class="channel-desc" id="activeRoomDesc">General discussion channel for everyone</p>
           </div>
         </div>
 
-        <div class="header-right">
-          <button class="btn btn-share" id="share-room-btn" title="Share link with friends">
-            <i class="fa-solid fa-share-nodes"></i>
-            <span>Share Room Link</span>
+        <div class="header-actions">
+          <!-- Search box -->
+          <div class="search-input-wrapper">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="searchInput" placeholder="Search room messages..." />
+            <button class="clear-search-btn hidden" id="clearSearchBtn">✕</button>
+          </div>
+
+          <!-- Share Room Code Button -->
+          <button class="btn btn-secondary btn-sm" id="shareRoomBtn" title="Share this room">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+            <span class="btn-text">Share Room</span>
+          </button>
+
+          <!-- Toggle Right Panel -->
+          <button class="icon-btn" id="toggleUsersBtn" title="Toggle Active Users">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
           </button>
         </div>
       </header>
 
-      <!-- Drag and Drop Overlay -->
-      <div class="drag-drop-overlay" id="drag-overlay">
-        <div class="drag-content">
-          <div class="drag-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-          <h3>Drop file to share</h3>
-          <p>Instant free sharing (Photos, Audio, Documents)</p>
+      <!-- Search Banner Active Alert -->
+      <div class="search-results-bar hidden" id="searchBar">
+        <span>Filtering messages containing "<strong id="searchQueryText"></strong>"</span>
+        <button id="closeSearchBannerBtn">Clear Filter</button>
+      </div>
+
+      <!-- Messages Stream Area -->
+      <div class="messages-container" id="messagesContainer">
+        <!-- Message list populated dynamically -->
+        <div class="welcome-message-card" id="welcomeCard">
+          <div class="welcome-icon">💬</div>
+          <h2>Welcome to PulseChat</h2>
+          <p>Connecting to Firebase Realtime Database...</p>
         </div>
       </div>
 
-      <!-- Message Stream -->
-      <div class="chat-messages" id="messages-container"></div>
-
-      <!-- Attachment Preview Bar -->
-      <div class="attachment-preview-bar hidden" id="attachment-preview-bar">
-        <div class="preview-file-info">
-          <i class="fa-solid fa-file-lines"></i>
-          <span class="preview-file-name" id="preview-file-name">filename.pdf</span>
-          <span class="preview-file-size" id="preview-file-size">1.2 MB</span>
-        </div>
-        <button class="icon-btn-sm text-danger" id="cancel-attachment-btn" title="Remove">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
+      <!-- Typing Indicator Bar -->
+      <div class="typing-indicator-bar" id="typingIndicator">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+        <span id="typingText">Someone is typing...</span>
       </div>
 
-      <!-- Voice Recording Bar -->
-      <div class="voice-recording-bar hidden" id="voice-recording-bar">
-        <div class="recording-indicator">
-          <span class="pulse-dot"></span>
-          <span>Recording Voice Note...</span>
-          <span class="recording-time" id="recording-time">00:00</span>
+      <!-- Attached Image Preview Container -->
+      <div class="attachment-preview-bar hidden" id="attachmentPreviewBar">
+        <div class="preview-thumb-wrapper">
+          <img id="previewImage" src="" alt="Attachment preview" />
+          <button class="remove-attachment-btn" id="removeAttachmentBtn">✕</button>
         </div>
-        <div class="recording-actions">
-          <button class="btn-sm btn-cancel" id="cancel-recording-btn">Cancel</button>
-          <button class="btn-sm btn-success" id="stop-send-recording-btn"><i class="fa-solid fa-paper-plane"></i> Send Voice</button>
-        </div>
+        <span class="preview-filename">Image attached</span>
       </div>
 
-      <!-- Chat Input Bar -->
-      <div class="chat-input-bar">
-        <input type="file" id="file-input" class="hidden">
-        <button class="input-action-btn" id="attach-file-btn" title="Attach file or image">
-          <i class="fa-solid fa-paperclip"></i>
-        </button>
+      <!-- Chat Input Form -->
+      <footer class="chat-input-footer">
+        <form class="chat-form" id="chatForm">
+          <label class="icon-btn attach-btn" title="Attach Image">
+            <input type="file" id="imageInput" accept="image/*" class="hidden-file-input">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          </label>
 
-        <button class="input-action-btn" id="record-voice-btn" title="Record Voice Note">
-          <i class="fa-solid fa-microphone"></i>
-        </button>
-
-        <div class="input-wrapper">
-          <textarea id="message-input" rows="1" placeholder="Type a message or drop a file..."></textarea>
-          
-          <button class="emoji-picker-btn" id="emoji-picker-btn" title="Insert Emoji">
-            <i class="fa-regular fa-face-smile"></i>
-          </button>
-
-          <div class="emoji-popover hidden" id="emoji-popover">
-            <div class="emoji-grid">
-              <span>👍</span><span>❤️</span><span>😂</span><span>🔥</span>
-              <span>🎉</span><span>😍</span><span>🙌</span><span>😎</span>
-              <span>✨</span><span>🚀</span><span>👏</span><span>💡</span>
-            </div>
+          <div class="input-wrapper">
+            <textarea id="messageInput" placeholder="Type a message into #general..." rows="1" autocomplete="off"></textarea>
           </div>
-        </div>
 
-        <button class="send-btn" id="send-btn" title="Send Message">
-          <i class="fa-solid fa-paper-plane"></i>
-        </button>
+          <button type="submit" class="btn btn-primary send-btn" id="sendBtn" title="Send Message">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
+        </form>
+      </footer>
+    </main>
+
+    <!-- Right Drawer: Active Users & Room Info -->
+    <aside class="members-drawer" id="membersDrawer">
+      <div class="members-header">
+        <h3>ACTIVE PARTICIPANTS</h3>
+        <span class="count-badge" id="onlineCountBadge">0</span>
       </div>
 
-    </main>
+      <div class="room-code-banner hidden" id="roomCodeBanner">
+        <span class="code-label">ROOM CODE</span>
+        <div class="code-box">
+          <strong id="displayRoomCode">XXXXXX</strong>
+          <button class="icon-btn-sm" id="copyRoomCodeBtn" title="Copy Code">📋</button>
+        </div>
+        <p class="code-hint">Share this code with friends to join!</p>
+      </div>
+
+      <div class="members-list" id="membersList">
+        <!-- Populated dynamically with active presence -->
+      </div>
+    </aside>
   </div>
 
-  <!-- MODALS -->
-
-  <!-- 1. Free Firebase Setup Guide -->
-  <div class="modal-backdrop hidden" id="setup-guide-modal">
-    <div class="modal-card modal-lg">
+  <!-- Create Room Modal -->
+  <div class="modal-overlay hidden" id="createRoomModal">
+    <div class="modal-card">
       <div class="modal-header">
-        <h3><i class="fa-solid fa-fire text-orange"></i> 100% Free Firebase Setup (No Credit Card!)</h3>
-        <button class="icon-btn modal-close-btn" data-close="setup-guide-modal"><i class="fa-solid fa-xmark"></i></button>
+        <h3>Create Private Room</h3>
+        <button class="modal-close" id="closeCreateModalBtn">✕</button>
       </div>
-      <div class="modal-body setup-instructions">
-        <p class="lead-text">Set up your free real-time backend in 2 minutes (Uses Cloud Firestore 100% free Spark plan):</p>
-
-        <div class="step-card">
-          <div class="step-number">1</div>
-          <div class="step-content">
-            <h4>Create a Firebase Project</h4>
-            <p>Go to <a href="https://console.firebase.google.com/" target="_blank" rel="noopener">Firebase Console</a>, click <strong>"Add Project"</strong> (e.g. <code>pulse-chat-app</code>).</p>
-          </div>
+      <div class="modal-body">
+        <p class="modal-desc">Create a secure private room with a unique room code. Anyone with the code or share link can join.</p>
+        <div class="form-group">
+          <label for="newRoomName">Room Name</label>
+          <input type="text" id="newRoomName" placeholder="e.g. Secret Chill Squad" maxlength="30">
         </div>
-
-        <div class="step-card">
-          <div class="step-number">2</div>
-          <div class="step-content">
-            <h4>Enable Cloud Firestore Database</h4>
-            <p>Click <strong>Firestore Database</strong> &rarr; <strong>Create Database</strong>. Choose <strong>Start in Test Mode</strong>.</p>
-          </div>
-        </div>
-
-        <div class="step-card">
-          <div class="step-number">3</div>
-          <div class="step-content">
-            <h4>Enable Anonymous Authentication</h4>
-            <p>Click <strong>Authentication</strong> &rarr; <strong>Get Started</strong> &rarr; <strong>Sign-in method</strong> &rarr; Enable <strong>Anonymous</strong>.</p>
-          </div>
-        </div>
-
-        <div class="step-card">
-          <div class="step-number">4</div>
-          <div class="step-content">
-            <h4>Copy App Credentials</h4>
-            <p>Click ⚙️ <strong>Project settings</strong> &rarr; scroll to <em>Your apps</em> &rarr; Click Web <code>&lt;/&gt;</code> &rarr; Copy the <code>firebaseConfig</code> keys.</p>
-          </div>
-        </div>
-
-        <div class="step-card highlight">
-          <div class="step-number"><i class="fa-solid fa-key"></i></div>
-          <div class="step-content">
-            <h4>Connect App</h4>
-            <p>Click the button below to paste your credentials and connect instantly!</p>
+        <div class="form-group">
+          <label for="newRoomCode">Custom Room Code (Optional)</label>
+          <div class="code-input-row">
+            <input type="text" id="newRoomCode" placeholder="Auto-generated if blank" maxlength="12" style="text-transform: uppercase;">
+            <button class="btn btn-secondary btn-sm" id="genRandomCodeBtn" type="button">🎲 Random</button>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary modal-close-btn" data-close="setup-guide-modal">Close</button>
-        <button class="btn btn-primary" id="guide-to-config-btn"><i class="fa-solid fa-sliders"></i> Enter Credentials</button>
+        <button class="btn btn-outline" id="cancelCreateModalBtn">Cancel</button>
+        <button class="btn btn-primary" id="confirmCreateRoomBtn">Create & Join</button>
       </div>
     </div>
   </div>
 
-  <!-- 2. Config Modal -->
-  <div class="modal-backdrop hidden" id="config-modal">
+  <!-- Join Room Modal -->
+  <div class="modal-overlay hidden" id="joinRoomModal">
     <div class="modal-card">
       <div class="modal-header">
-        <h3><i class="fa-solid fa-gear"></i> Firebase Credentials (Free Spark Tier)</h3>
-        <button class="icon-btn modal-close-btn" data-close="config-modal"><i class="fa-solid fa-xmark"></i></button>
+        <h3>Join Private Room</h3>
+        <button class="modal-close" id="closeJoinModalBtn">✕</button>
       </div>
       <div class="modal-body">
-        <form id="firebase-config-form">
-          <div class="form-group">
-            <label for="cfg-apiKey">API Key (apiKey)</label>
-            <input type="text" id="cfg-apiKey" placeholder="AIzaSy..." required>
-          </div>
-          <div class="form-group">
-            <label for="cfg-authDomain">Auth Domain (authDomain)</label>
-            <input type="text" id="cfg-authDomain" placeholder="your-project.firebaseapp.com">
-          </div>
-          <div class="form-group">
-            <label for="cfg-projectId">Project ID (projectId)</label>
-            <input type="text" id="cfg-projectId" placeholder="your-project-id" required>
-          </div>
-          <div class="form-group">
-            <label for="cfg-messagingSenderId">Messaging Sender ID</label>
-            <input type="text" id="cfg-messagingSenderId" placeholder="1234567890">
-          </div>
-          <div class="form-group">
-            <label for="cfg-appId">App ID (appId)</label>
-            <input type="text" id="cfg-appId" placeholder="1:1234567890:web:abc123def456">
-          </div>
-          <div class="form-actions">
-            <button type="button" class="btn btn-secondary" id="reset-config-btn">Reset to Demo</button>
-            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save & Connect</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- 3. Share Invite Link Modal -->
-  <div class="modal-backdrop hidden" id="share-modal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3><i class="fa-solid fa-share-nodes text-primary"></i> Invite Friends to Chat</h3>
-        <button class="icon-btn modal-close-btn" data-close="share-modal"><i class="fa-solid fa-xmark"></i></button>
-      </div>
-      <div class="modal-body text-center">
-        <div class="share-icon-large"><i class="fa-solid fa-link"></i></div>
-        <h4 id="share-modal-room-name">General Lounge</h4>
-        <p class="text-muted">Send this link to your friends so they auto-join your chat room instantly!</p>
-        
-        <div class="share-link-box">
-          <input type="text" id="share-link-input" readonly>
-          <button class="btn btn-primary" id="copy-share-link-btn">
-            <i class="fa-solid fa-copy"></i> Copy
-          </button>
+        <p class="modal-desc">Enter the private room code shared by your friend to join the live conversation.</p>
+        <div class="form-group">
+          <label for="joinRoomCodeInput">Room Code</label>
+          <input type="text" id="joinRoomCodeInput" placeholder="e.g. ROOM-7X9K2" style="text-transform: uppercase;" maxlength="20">
         </div>
       </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="cancelJoinModalBtn">Cancel</button>
+        <button class="btn btn-primary" id="confirmJoinRoomBtn">Join Room</button>
+      </div>
     </div>
   </div>
 
-  <!-- 4. Profile Modal -->
-  <div class="modal-backdrop hidden" id="profile-modal">
+  <!-- Nickname Edit Modal -->
+  <div class="modal-overlay hidden" id="editNameModal">
     <div class="modal-card">
       <div class="modal-header">
-        <h3><i class="fa-solid fa-user"></i> Customize Profile</h3>
-        <button class="icon-btn modal-close-btn" data-close="profile-modal"><i class="fa-solid fa-xmark"></i></button>
+        <h3>Set Your Display Name</h3>
+        <button class="modal-close" id="closeNameModalBtn">✕</button>
       </div>
       <div class="modal-body">
-        <form id="profile-form">
-          <div class="form-group">
-            <label for="profile-name-input">Display Name</label>
-            <input type="text" id="profile-name-input" required maxLength="25">
-          </div>
-          
-          <div class="form-group">
-            <label>Avatar Icon</label>
-            <div class="avatar-select-grid" id="avatar-select-grid">
-              <span class="avatar-option selected">⚡</span>
-              <span class="avatar-option">🦊</span>
-              <span class="avatar-option">🚀</span>
-              <span class="avatar-option">🤖</span>
-              <span class="avatar-option">🐱</span>
-              <span class="avatar-option">👑</span>
-              <span class="avatar-option">🔥</span>
-              <span class="avatar-option">💎</span>
-            </div>
-          </div>
-
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary btn-block">Save Profile</button>
-          </div>
-        </form>
+        <div class="form-group">
+          <label for="nicknameInput">Choose a Nickname</label>
+          <input type="text" id="nicknameInput" placeholder="e.g. CyberNinja" maxlength="20">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="cancelNameModalBtn">Cancel</button>
+        <button class="btn btn-primary" id="saveNicknameBtn">Save Name</button>
       </div>
     </div>
   </div>
 
-  <!-- 5. Lightbox Modal -->
-  <div class="modal-backdrop hidden" id="lightbox-modal">
-    <div class="lightbox-content">
-      <button class="lightbox-close modal-close-btn" data-close="lightbox-modal"><i class="fa-solid fa-xmark"></i></button>
-      <img id="lightbox-img" src="" alt="Enlarged view">
-      <a id="lightbox-download-btn" href="" download class="btn btn-secondary lightbox-download" target="_blank">
-        <i class="fa-solid fa-download"></i> Download Image
-      </a>
-    </div>
-  </div>
+  <!-- Share Link Toast Notification -->
+  <div class="toast-container" id="toastContainer"></div>
 
-  <div class="toast-container" id="toast-container"></div>
-
-  <script type="module" src="js/firebase-config.js"></script>
-  <script type="module" src="js/chat.js"></script>
+  <!-- Application Logic -->
+  <script type="module" src="app.js"></script>
 </body>
 </html>

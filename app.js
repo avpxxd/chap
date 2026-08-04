@@ -1,0 +1,865 @@
+// Import Firebase SDK Modules from CDN
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { 
+  getDatabase, 
+  ref, 
+  set, 
+  push, 
+  onValue, 
+  onChildAdded, 
+  onChildChanged,
+  onChildRemoved,
+  remove, 
+  serverTimestamp, 
+  onDisconnect, 
+  get 
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+// Firebase Configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyD4V61nnTkvE1kDC08eACZsedX8GrC73DM",
+  authDomain: "chatapp-f1f3f.firebaseapp.com",
+  databaseURL: "https://chatapp-f1f3f-default-rtdb.firebaseio.com",
+  projectId: "chatapp-f1f3f",
+  storageBucket: "chatapp-f1f3f.firebasestorage.app",
+  messagingSenderId: "519762777434",
+  appId: "1:519762777434:web:8ed9ca727ab52f13dacf63",
+  measurementId: "G-181SGZDMGT"
+};
+
+// Initialize Firebase App & Realtime Database
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+// Public Default Channels
+const PUBLIC_ROOMS = [
+  { id: "general", name: "#general", desc: "General discussion channel for everyone", icon: "💬" },
+  { id: "tech-lounge", name: "#tech-lounge", desc: "Tech news, coding tips, and gadget talk", icon: "💻" },
+  { id: "gaming", name: "#gaming", desc: "Gamers hangout, squad up, and clips", icon: "🎮" },
+  { id: "music-vibes", name: "#music-vibes", desc: "Share music recs and playlist vibes", icon: "🎵" },
+  { id: "random", name: "#random", desc: "Memes, random thoughts, and fun", icon: "🎲" }
+];
+
+// Application State
+let currentUser = null;
+let currentNickname = localStorage.getItem("pulsechat_nickname") || "";
+let currentRoom = PUBLIC_ROOMS[0];
+let privateRooms = JSON.parse(localStorage.getItem("pulsechat_private_rooms") || "[]");
+let soundMuted = localStorage.getItem("pulsechat_sound_muted") === "true";
+let activeImageAttachment = null;
+let currentMessageListener = null;
+let currentReactionListener = null;
+let currentTypingListener = null;
+let activePresenceListener = null;
+let typingTimeout = null;
+let searchFilterQuery = "";
+let unreadCounts = {};
+
+// Sound Synthesizer via Web Audio API
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(type) {
+  if (soundMuted || audioCtx.state === 'suspended') {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (soundMuted) return;
+  }
+
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+
+    if (type === 'send') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    } else if (type === 'receive') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(587.33, now); // D5
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+      osc.start(now);
+      osc.stop(now + 0.12);
+    } else if (type === 'join') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch (e) {
+    console.error("Audio playback error:", e);
+  }
+}
+
+// DOM Elements
+const elements = {
+  publicRoomsList: document.getElementById("publicRoomsList"),
+  privateRoomsList: document.getElementById("privateRoomsList"),
+  currentUserName: document.getElementById("currentUserName"),
+  currentUserIdSub: document.getElementById("currentUserIdSub"),
+  currentUserAvatar: document.getElementById("currentUserAvatar"),
+  activeRoomTitle: document.getElementById("activeRoomTitle"),
+  activeRoomBadge: document.getElementById("activeRoomBadge"),
+  activeRoomDesc: document.getElementById("activeRoomDesc"),
+  messagesContainer: document.getElementById("messagesContainer"),
+  chatForm: document.getElementById("chatForm"),
+  messageInput: document.getElementById("messageInput"),
+  imageInput: document.getElementById("imageInput"),
+  attachmentPreviewBar: document.getElementById("attachmentPreviewBar"),
+  previewImage: document.getElementById("previewImage"),
+  removeAttachmentBtn: document.getElementById("removeAttachmentBtn"),
+  typingIndicator: document.getElementById("typingIndicator"),
+  typingText: document.getElementById("typingText"),
+  membersList: document.getElementById("membersList"),
+  onlineCountBadge: document.getElementById("onlineCountBadge"),
+  roomCodeBanner: document.getElementById("roomCodeBanner"),
+  displayRoomCode: document.getElementById("displayRoomCode"),
+  copyRoomCodeBtn: document.getElementById("copyRoomCodeBtn"),
+  shareRoomBtn: document.getElementById("shareRoomBtn"),
+  toastContainer: document.getElementById("toastContainer"),
+  audioToggleBtn: document.getElementById("audioToggleBtn"),
+  soundOnIcon: document.getElementById("soundOnIcon"),
+  soundOffIcon: document.getElementById("soundOffIcon"),
+  // Modals & Inputs
+  createRoomModal: document.getElementById("createRoomModal"),
+  openCreateRoomModalBtn: document.getElementById("openCreateRoomModalBtn"),
+  closeCreateModalBtn: document.getElementById("closeCreateModalBtn"),
+  cancelCreateModalBtn: document.getElementById("cancelCreateModalBtn"),
+  confirmCreateRoomBtn: document.getElementById("confirmCreateRoomBtn"),
+  newRoomName: document.getElementById("newRoomName"),
+  newRoomCode: document.getElementById("newRoomCode"),
+  genRandomCodeBtn: document.getElementById("genRandomCodeBtn"),
+  joinRoomModal: document.getElementById("joinRoomModal"),
+  openJoinRoomModalBtn: document.getElementById("openJoinRoomModalBtn"),
+  closeJoinModalBtn: document.getElementById("closeJoinModalBtn"),
+  cancelJoinModalBtn: document.getElementById("cancelJoinModalBtn"),
+  confirmJoinRoomBtn: document.getElementById("confirmJoinRoomBtn"),
+  joinRoomCodeInput: document.getElementById("joinRoomCodeInput"),
+  editNameModal: document.getElementById("editNameModal"),
+  editNameBtn: document.getElementById("editNameBtn"),
+  closeNameModalBtn: document.getElementById("closeNameModalBtn"),
+  cancelNameModalBtn: document.getElementById("cancelNameModalBtn"),
+  saveNicknameBtn: document.getElementById("saveNicknameBtn"),
+  nicknameInput: document.getElementById("nicknameInput"),
+  // Search
+  searchInput: document.getElementById("searchInput"),
+  clearSearchBtn: document.getElementById("clearSearchBtn"),
+  searchBar: document.getElementById("searchBar"),
+  searchQueryText: document.getElementById("searchQueryText"),
+  closeSearchBannerBtn: document.getElementById("closeSearchBannerBtn"),
+  // Mobile
+  mobileMenuBtn: document.getElementById("mobileMenuBtn"),
+  closeSidebarBtn: document.getElementById("closeSidebarBtn"),
+  sidebar: document.getElementById("sidebar"),
+  sidebarBackdrop: document.getElementById("sidebarBackdrop"),
+  toggleUsersBtn: document.getElementById("toggleUsersBtn"),
+  membersDrawer: document.getElementById("membersDrawer")
+};
+
+// Generate Random 6-char Room Code
+function generateRandomCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let result = "ROOM-";
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// Show Toast Notification
+function showToast(message, duration = 3000) {
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.innerHTML = `<span>✨</span> <span>${message}</span>`;
+  elements.toastContainer.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(100%)';
+    toast.style.transition = 'all 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+// Format Timestamps
+function formatTime(timestamp) {
+  if (!timestamp) return "Just now";
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// Initialize Application
+async function initApp() {
+  updateSoundUI();
+  renderPublicRooms();
+  renderPrivateRooms();
+  setupEventListeners();
+
+  // Anonymous Authentication
+  try {
+    const userCredential = await signInAnonymously(auth);
+    currentUser = userCredential.user;
+    
+    if (!currentNickname) {
+      currentNickname = "Guest-" + currentUser.uid.substring(0, 4);
+      localStorage.setItem("pulsechat_nickname", currentNickname);
+    }
+    
+    updateUserUI();
+    setupPresence();
+    
+    // Check URL parameters for private room code
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get("room");
+    if (roomParam) {
+      joinRoomByCode(roomParam.trim().toUpperCase());
+    } else {
+      switchRoom(PUBLIC_ROOMS[0]);
+    }
+  } catch (error) {
+    console.error("Firebase Auth Error:", error);
+    showToast("Authentication error. Refreshing...");
+  }
+}
+
+// Setup User Online Presence with RTDB
+function setupPresence() {
+  if (!currentUser) return;
+  const userStatusRef = ref(db, `status/${currentUser.uid}`);
+  const connectedRef = ref(db, ".info/connected");
+
+  const myStatus = {
+    name: currentNickname,
+    uid: currentUser.uid,
+    state: "online",
+    roomId: currentRoom.id,
+    lastSeen: serverTimestamp()
+  };
+
+  onValue(connectedRef, (snapshot) => {
+    if (snapshot.val() === false) return;
+
+    onDisconnect(userStatusRef).set({
+      name: currentNickname,
+      uid: currentUser.uid,
+      state: "offline",
+      roomId: currentRoom.id,
+      lastSeen: serverTimestamp()
+    }).then(() => {
+      set(userStatusRef, myStatus);
+    });
+  });
+}
+
+function updatePresenceRoom(roomId) {
+  if (!currentUser) return;
+  set(ref(db, `status/${currentUser.uid}/roomId`), roomId);
+}
+
+// Listen to Active Members in Current Room
+function listenToRoomMembers(roomId) {
+  if (activePresenceListener) activePresenceListener();
+  
+  const statusRef = ref(db, "status");
+  activePresenceListener = onValue(statusRef, (snapshot) => {
+    const data = snapshot.val() || {};
+    elements.membersList.innerHTML = "";
+    let onlineCount = 0;
+
+    Object.values(data).forEach(user => {
+      if (user.roomId === roomId && user.state === "online") {
+        onlineCount++;
+        const item = document.createElement("div");
+        item.className = "member-item";
+        const initial = (user.name || "G").charAt(0).toUpperCase();
+        item.innerHTML = `
+          <div class="member-avatar-wrapper">
+            <div class="member-avatar">${initial}</div>
+            <div class="member-status-dot"></div>
+          </div>
+          <span class="member-name">${user.name || "Anonymous User"}</span>
+        `;
+        elements.membersList.appendChild(item);
+      }
+    });
+
+    elements.onlineCountBadge.textContent = onlineCount;
+  });
+}
+
+// Update User UI
+function updateUserUI() {
+  if (!currentUser) return;
+  elements.currentUserName.textContent = currentNickname;
+  elements.currentUserAvatar.textContent = currentNickname.charAt(0).toUpperCase();
+  elements.currentUserIdSub.textContent = `ID: ${currentUser.uid.substring(0, 8)}`;
+}
+
+// Render Public Channels List
+function renderPublicRooms() {
+  elements.publicRoomsList.innerHTML = "";
+  PUBLIC_ROOMS.forEach(room => {
+    const item = document.createElement("div");
+    item.className = `room-item ${room.id === currentRoom.id ? 'active' : ''}`;
+    item.onclick = () => switchRoom(room);
+    
+    const unread = unreadCounts[room.id] || 0;
+    item.innerHTML = `
+      <div class="room-item-name">
+        <span>${room.icon}</span>
+        <span>${room.name}</span>
+      </div>
+      ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
+    `;
+    elements.publicRoomsList.appendChild(item);
+  });
+}
+
+// Render Private Rooms List
+function renderPrivateRooms() {
+  elements.privateRoomsList.innerHTML = "";
+  if (privateRooms.length === 0) {
+    elements.privateRoomsList.innerHTML = `<div class="empty-rooms-hint">No private rooms joined yet.</div>`;
+    return;
+  }
+
+  privateRooms.forEach(room => {
+    const item = document.createElement("div");
+    item.className = `room-item ${room.id === currentRoom.id ? 'active' : ''}`;
+    item.onclick = () => switchRoom(room);
+    
+    const unread = unreadCounts[room.id] || 0;
+    item.innerHTML = `
+      <div class="room-item-name">
+        <span>🔒</span>
+        <span>${room.name}</span>
+      </div>
+      ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
+    `;
+    elements.privateRoomsList.appendChild(item);
+  });
+}
+
+// Switch Active Chat Room
+function switchRoom(room) {
+  currentRoom = room;
+  unreadCounts[room.id] = 0;
+  renderPublicRooms();
+  renderPrivateRooms();
+  
+  elements.activeRoomTitle.textContent = room.name;
+  elements.activeRoomDesc.textContent = room.desc || "Private chat room";
+  elements.activeRoomBadge.textContent = room.isPrivate ? "Private Code" : "Public";
+  elements.activeRoomBadge.className = `badge ${room.isPrivate ? 'private' : ''}`;
+  elements.messageInput.placeholder = `Type a message in ${room.name}...`;
+
+  if (room.isPrivate) {
+    elements.roomCodeBanner.classList.remove("hidden");
+    elements.displayRoomCode.textContent = room.code || room.id;
+  } else {
+    elements.roomCodeBanner.classList.add("hidden");
+  }
+
+  updatePresenceRoom(room.id);
+  listenToRoomMembers(room.id);
+  loadRoomMessages(room.id);
+  listenToTyping(room.id);
+  playSound('join');
+}
+
+// Load Messages for Room
+function loadRoomMessages(roomId) {
+  if (currentMessageListener) currentMessageListener();
+  elements.messagesContainer.innerHTML = "";
+
+  const messagesRef = ref(db, `messages/${roomId}`);
+  let isFirstLoad = true;
+
+  onValue(messagesRef, (snapshot) => {
+    const messages = snapshot.val();
+    elements.messagesContainer.innerHTML = "";
+
+    if (!messages) {
+      elements.messagesContainer.innerHTML = `
+        <div class="welcome-message-card">
+          <div class="welcome-icon">${currentRoom.icon || '💬'}</div>
+          <h2>Welcome to ${currentRoom.name}</h2>
+          <p>No messages here yet. Be the first to start the conversation!</p>
+        </div>
+      `;
+      return;
+    }
+
+    let hasMatchedSearch = false;
+    Object.entries(messages).forEach(([msgId, msg]) => {
+      if (searchFilterQuery) {
+        const text = (msg.text || "").toLowerCase();
+        const author = (msg.senderName || "").toLowerCase();
+        if (!text.includes(searchFilterQuery) && !author.includes(searchFilterQuery)) {
+          return;
+        }
+        hasMatchedSearch = true;
+      }
+      renderSingleMessage(msgId, msg);
+    });
+
+    if (searchFilterQuery && !hasMatchedSearch) {
+      elements.messagesContainer.innerHTML = `<div class="empty-rooms-hint" style="text-align: center; padding: 40px;">No messages matched "${searchFilterQuery}".</div>`;
+    } else {
+      elements.messagesContainer.scrollTop = elements.messagesContainer.scrollHeight;
+    }
+
+    if (isFirstLoad) {
+      isFirstLoad = false;
+    }
+  });
+
+  // Listen to incoming new messages for sound notification
+  currentMessageListener = onChildAdded(messagesRef, (snapshot) => {
+    const msg = snapshot.val();
+    if (!isFirstLoad && msg && msg.senderId !== currentUser?.uid) {
+      playSound('receive');
+    }
+  });
+}
+
+// Render Single Message in Stream
+function renderSingleMessage(msgId, msg) {
+  const isOutgoing = msg.senderId === currentUser?.uid;
+  const item = document.createElement("div");
+  item.className = `message-item ${isOutgoing ? 'outgoing' : ''}`;
+  item.id = `msg-${msgId}`;
+
+  const initial = (msg.senderName || "U").charAt(0).toUpperCase();
+
+  // Auto-convert URLs into clickable links
+  let formattedText = escapeHTML(msg.text || "");
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  formattedText = formattedText.replace(urlRegex, (url) => {
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #818cf8; underline;">${url}</a>`;
+  });
+
+  let mediaHtml = "";
+  if (msg.imageUrl) {
+    mediaHtml = `<img src="${msg.imageUrl}" class="msg-media-preview" alt="Attachment" loading="lazy" />`;
+  }
+
+  // Reactions HTML
+  let reactionsHtml = "";
+  if (msg.reactions) {
+    const reactionCounts = {};
+    const userReacted = {};
+    Object.entries(msg.reactions).forEach(([emoji, userMap]) => {
+      const users = Object.keys(userMap);
+      reactionCounts[emoji] = users.length;
+      if (users.includes(currentUser?.uid)) {
+        userReacted[emoji] = true;
+      }
+    });
+
+    reactionsHtml = '<div class="msg-reactions">';
+    Object.entries(reactionCounts).forEach(([emoji, count]) => {
+      reactionsHtml += `
+        <span class="reaction-chip ${userReacted[emoji] ? 'user-reacted' : ''}" onclick="window.toggleReaction('${msgId}', '${emoji}')">
+          ${emoji} ${count}
+        </span>
+      `;
+    });
+    reactionsHtml += '</div>';
+  }
+
+  item.innerHTML = `
+    <div class="msg-avatar">${initial}</div>
+    <div class="msg-body">
+      <div class="msg-header">
+        <span class="msg-author">${escapeHTML(msg.senderName || "User")}</span>
+        <span class="msg-time">${formatTime(msg.timestamp)}</span>
+      </div>
+      <div class="msg-bubble">
+        ${formattedText}
+        ${mediaHtml}
+        <button class="add-reaction-btn" onclick="window.showReactionPicker(event, '${msgId}')" title="Add reaction">➕</button>
+      </div>
+      ${reactionsHtml}
+    </div>
+  `;
+
+  elements.messagesContainer.appendChild(item);
+}
+
+// Reaction Picker & Helper Functions
+window.showReactionPicker = function(event, msgId) {
+  event.stopPropagation();
+  const existing = document.querySelector(".reaction-picker-popover");
+  if (existing) existing.remove();
+
+  const emojis = ["👍", "❤️", "😂", "🔥", "🎉", "🚀"];
+  const popover = document.createElement("div");
+  popover.className = "reaction-picker-popover";
+
+  emojis.forEach(emoji => {
+    const span = document.createElement("span");
+    span.textContent = emoji;
+    span.onclick = () => {
+      window.toggleReaction(msgId, emoji);
+      popover.remove();
+    };
+    popover.appendChild(span);
+  });
+
+  const bubble = event.currentTarget.closest(".msg-bubble");
+  bubble.appendChild(popover);
+
+  document.addEventListener("click", () => popover.remove(), { once: true });
+};
+
+window.toggleReaction = function(msgId, emoji) {
+  if (!currentUser) return;
+  const reactionRef = ref(db, `messages/${currentRoom.id}/${msgId}/reactions/${emoji}/${currentUser.uid}`);
+  
+  get(reactionRef).then(snapshot => {
+    if (snapshot.exists()) {
+      remove(reactionRef);
+    } else {
+      set(reactionRef, currentNickname);
+    }
+  });
+};
+
+// Send Message Logic
+async function sendMessage(e) {
+  if (e) e.preventDefault();
+  const text = elements.messageInput.value.trim();
+  if (!text && !activeImageAttachment) return;
+  if (!currentUser) return;
+
+  const msgData = {
+    senderId: currentUser.uid,
+    senderName: currentNickname,
+    text: text,
+    timestamp: serverTimestamp()
+  };
+
+  if (activeImageAttachment) {
+    msgData.imageUrl = activeImageAttachment;
+  }
+
+  const newMsgRef = push(ref(db, `messages/${currentRoom.id}`));
+  await set(newMsgRef, msgData);
+
+  // Reset form
+  elements.messageInput.value = "";
+  elements.messageInput.style.height = "auto";
+  clearImageAttachment();
+  stopTyping();
+  playSound('send');
+}
+
+// Image File Attachment Handler
+function handleImageSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  if (file.size > 2 * 1024 * 1024) {
+    showToast("Please choose an image under 2MB.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    activeImageAttachment = evt.target.result;
+    elements.previewImage.src = activeImageAttachment;
+    elements.attachmentPreviewBar.classList.remove("hidden");
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearImageAttachment() {
+  activeImageAttachment = null;
+  elements.imageInput.value = "";
+  elements.attachmentPreviewBar.classList.add("hidden");
+}
+
+// Typing Indicator Functionality
+function handleTyping() {
+  if (!currentUser) return;
+  const typingRef = ref(db, `typing/${currentRoom.id}/${currentUser.uid}`);
+  set(typingRef, { name: currentNickname, time: Date.now() });
+
+  if (typingTimeout) clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(stopTyping, 2000);
+}
+
+function stopTyping() {
+  if (!currentUser) return;
+  remove(ref(db, `typing/${currentRoom.id}/${currentUser.uid}`));
+}
+
+function listenToTyping(roomId) {
+  if (currentTypingListener) currentTypingListener();
+  
+  const typingRef = ref(db, `typing/${roomId}`);
+  currentTypingListener = onValue(typingRef, (snapshot) => {
+    const data = snapshot.val() || {};
+    const typers = Object.values(data)
+      .filter(t => t.name !== currentNickname && (Date.now() - t.time < 3000))
+      .map(t => t.name);
+
+    if (typers.length > 0) {
+      elements.typingText.textContent = typers.length === 1 
+        ? `${typers[0]} is typing...` 
+        : `${typers.join(", ")} are typing...`;
+      elements.typingIndicator.classList.add("visible");
+    } else {
+      elements.typingIndicator.classList.remove("visible");
+    }
+  });
+}
+
+// Create Private Room
+async function handleCreateRoom() {
+  const name = elements.newRoomName.value.trim();
+  let code = elements.newRoomCode.value.trim().toUpperCase();
+
+  if (!name) {
+    showToast("Please enter a room name.");
+    return;
+  }
+
+  if (!code) {
+    code = generateRandomCode();
+  }
+
+  const roomObj = {
+    id: code,
+    code: code,
+    name: name,
+    isPrivate: true,
+    createdBy: currentUser?.uid,
+    createdAt: Date.now()
+  };
+
+  // Save private room in Firebase RTDB index so anyone with the code can join
+  await set(ref(db, `private_rooms/${code}`), roomObj);
+
+  // Add to local user list if not present
+  if (!privateRooms.some(r => r.id === code)) {
+    privateRooms.push(roomObj);
+    localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
+  }
+
+  elements.createRoomModal.classList.add("hidden");
+  elements.newRoomName.value = "";
+  elements.newRoomCode.value = "";
+
+  showToast(`Created private room: ${code}`);
+  switchRoom(roomObj);
+}
+
+// Join Private Room by Code
+async function joinRoomByCode(codeToJoin) {
+  const code = (codeToJoin || elements.joinRoomCodeInput.value).trim().toUpperCase();
+  if (!code) {
+    showToast("Please enter a room code.");
+    return;
+  }
+
+  try {
+    const snapshot = await get(ref(db, `private_rooms/${code}`));
+    if (snapshot.exists()) {
+      const roomObj = snapshot.val();
+      if (!privateRooms.some(r => r.id === code)) {
+        privateRooms.push(roomObj);
+        localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
+      }
+      elements.joinRoomModal.classList.add("hidden");
+      elements.joinRoomCodeInput.value = "";
+      showToast(`Joined room: ${roomObj.name}`);
+      switchRoom(roomObj);
+    } else {
+      // Fallback: create ad-hoc private room object for code
+      const roomObj = {
+        id: code,
+        code: code,
+        name: `Private Room (${code})`,
+        isPrivate: true
+      };
+      if (!privateRooms.some(r => r.id === code)) {
+        privateRooms.push(roomObj);
+        localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
+      }
+      elements.joinRoomModal.classList.add("hidden");
+      elements.joinRoomCodeInput.value = "";
+      showToast(`Joined room code: ${code}`);
+      switchRoom(roomObj);
+    }
+  } catch (err) {
+    console.error("Error joining room code:", err);
+    showToast("Could not find room code.");
+  }
+}
+
+// Sound Toggle
+function updateSoundUI() {
+  if (soundMuted) {
+    elements.soundOnIcon.classList.add("hidden");
+    elements.soundOffIcon.classList.remove("hidden");
+  } else {
+    elements.soundOnIcon.classList.remove("hidden");
+    elements.soundOffIcon.classList.add("hidden");
+  }
+}
+
+// HTML Escaper to Prevent XSS
+function escapeHTML(str) {
+  return str.replace(/[&<>'"]/g, 
+    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+  );
+}
+
+// Event Listeners Setup
+function setupEventListeners() {
+  // Chat form submit
+  elements.chatForm.addEventListener("submit", sendMessage);
+
+  // Textarea auto-height & enter key submit
+  elements.messageInput.addEventListener("input", () => {
+    elements.messageInput.style.height = "auto";
+    elements.messageInput.style.height = elements.messageInput.scrollHeight + "px";
+    handleTyping();
+  });
+
+  elements.messageInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // Attachment input
+  elements.imageInput.addEventListener("change", handleImageSelect);
+  elements.removeAttachmentBtn.addEventListener("click", clearImageAttachment);
+
+  // Audio Toggle
+  elements.audioToggleBtn.addEventListener("click", () => {
+    soundMuted = !soundMuted;
+    localStorage.setItem("pulsechat_sound_muted", soundMuted);
+    updateSoundUI();
+    showToast(soundMuted ? "Sound muted" : "Sound enabled");
+  });
+
+  // Create Room Modal
+  elements.openCreateRoomModalBtn.addEventListener("click", () => elements.createRoomModal.classList.remove("hidden"));
+  elements.closeCreateModalBtn.addEventListener("click", () => elements.createRoomModal.classList.add("hidden"));
+  elements.cancelCreateModalBtn.addEventListener("click", () => elements.createRoomModal.classList.add("hidden"));
+  elements.confirmCreateRoomBtn.addEventListener("click", handleCreateRoom);
+  elements.genRandomCodeBtn.addEventListener("click", () => elements.newRoomCode.value = generateRandomCode());
+
+  // Join Room Modal
+  elements.openJoinRoomModalBtn.addEventListener("click", () => elements.joinRoomModal.classList.remove("hidden"));
+  elements.closeJoinModalBtn.addEventListener("click", () => elements.joinRoomModal.classList.add("hidden"));
+  elements.cancelJoinModalBtn.addEventListener("click", () => elements.joinRoomModal.classList.add("hidden"));
+  elements.confirmJoinRoomBtn.addEventListener("click", () => joinRoomByCode());
+
+  // Edit Nickname Modal
+  elements.editNameBtn.addEventListener("click", () => {
+    elements.nicknameInput.value = currentNickname;
+    elements.editNameModal.classList.remove("hidden");
+  });
+  elements.closeNameModalBtn.addEventListener("click", () => elements.editNameModal.classList.add("hidden"));
+  elements.cancelNameModalBtn.addEventListener("click", () => elements.editNameModal.classList.add("hidden"));
+  elements.saveNicknameBtn.addEventListener("click", () => {
+    const newName = elements.nicknameInput.value.trim();
+    if (newName) {
+      currentNickname = newName;
+      localStorage.setItem("pulsechat_nickname", currentNickname);
+      updateUserUI();
+      if (currentUser) {
+        set(ref(db, `status/${currentUser.uid}/name`), currentNickname);
+      }
+      elements.editNameModal.classList.add("hidden");
+      showToast("Nickname updated!");
+    }
+  });
+
+  // Share Buttons & Room Copy
+  elements.copyRoomCodeBtn.addEventListener("click", () => {
+    const code = currentRoom.code || currentRoom.id;
+    navigator.clipboard.writeText(code);
+    showToast(`Copied room code: ${code}`);
+  });
+
+  elements.shareRoomBtn.addEventListener("click", () => {
+    const code = currentRoom.code || currentRoom.id;
+    const shareUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(code)}`;
+    navigator.clipboard.writeText(shareUrl);
+    showToast("Shareable room link copied to clipboard!");
+  });
+
+  // Search Filter Events
+  elements.searchInput.addEventListener("input", (e) => {
+    searchFilterQuery = e.target.value.trim().toLowerCase();
+    if (searchFilterQuery) {
+      elements.clearSearchBtn.classList.remove("hidden");
+      elements.searchBar.classList.remove("hidden");
+      elements.searchQueryText.textContent = searchFilterQuery;
+    } else {
+      elements.clearSearchBtn.classList.add("hidden");
+      elements.searchBar.classList.add("hidden");
+    }
+    loadRoomMessages(currentRoom.id);
+  });
+
+  elements.clearSearchBtn.addEventListener("click", () => {
+    elements.searchInput.value = "";
+    searchFilterQuery = "";
+    elements.clearSearchBtn.classList.add("hidden");
+    elements.searchBar.classList.add("hidden");
+    loadRoomMessages(currentRoom.id);
+  });
+
+  elements.closeSearchBannerBtn.addEventListener("click", () => {
+    elements.searchInput.value = "";
+    searchFilterQuery = "";
+    elements.clearSearchBtn.classList.add("hidden");
+    elements.searchBar.classList.add("hidden");
+    loadRoomMessages(currentRoom.id);
+  });
+
+  // Mobile navigation
+  elements.mobileMenuBtn.addEventListener("click", () => {
+    elements.sidebar.classList.add("open");
+    elements.sidebarBackdrop.classList.add("show");
+  });
+
+  const closeMobileSidebar = () => {
+    elements.sidebar.classList.remove("open");
+    elements.sidebarBackdrop.classList.remove("show");
+  };
+
+  elements.closeSidebarBtn.addEventListener("click", closeMobileSidebar);
+  elements.sidebarBackdrop.addEventListener("click", closeMobileSidebar);
+
+  elements.toggleUsersBtn.addEventListener("click", () => {
+    elements.membersDrawer.classList.toggle("open");
+  });
+}
+
+// Start application when DOM is ready
+document.addEventListener("DOMContentLoaded", initApp);
