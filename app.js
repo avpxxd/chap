@@ -444,7 +444,7 @@ function loadRoomMessages(roomId) {
         <div class="welcome-message-card">
           <div class="welcome-icon">${currentRoom.icon || '💬'}</div>
           <h2>Welcome to ${currentRoom.name}</h2>
-          <p>No messages here yet. Right-click any message for reactions, copy, and options!</p>
+          <p>Click any message to open reactions, copy, and options!</p>
         </div>
       `;
       return;
@@ -496,7 +496,7 @@ function renderSingleMessage(msgId, msg) {
   let formattedText = escapeHTML(msg.text || "");
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   formattedText = formattedText.replace(urlRegex, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #818cf8; underline;">${url}</a>`;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #818cf8; underline;" onclick="event.stopPropagation();">${url}</a>`;
   });
 
   let mediaHtml = "";
@@ -520,7 +520,7 @@ function renderSingleMessage(msgId, msg) {
     reactionsHtml = '<div class="msg-reactions">';
     Object.entries(reactionCounts).forEach(([emoji, count]) => {
       reactionsHtml += `
-        <span class="reaction-chip ${userReacted[emoji] ? 'user-reacted' : ''}" onclick="window.toggleReaction('${msgId}', '${emoji}')">
+        <span class="reaction-chip ${userReacted[emoji] ? 'user-reacted' : ''}" onclick="event.stopPropagation(); window.toggleReaction('${msgId}', '${emoji}');">
           ${emoji} ${count}
         </span>
       `;
@@ -535,7 +535,7 @@ function renderSingleMessage(msgId, msg) {
         <span class="msg-author">${escapeHTML(msg.senderName || "User")}</span>
         <span class="msg-time">${formatTime(msg.timestamp)}</span>
       </div>
-      <div class="msg-bubble">
+      <div class="msg-bubble" title="Click for options & reactions">
         ${formattedText}
         ${mediaHtml}
       </div>
@@ -543,9 +543,11 @@ function renderSingleMessage(msgId, msg) {
     </div>
   `;
 
-  // Attach Right-Click Context Menu Listener
-  item.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
+  // Left-Click Listener on message bubble / item to trigger the menu
+  item.addEventListener("click", (e) => {
+    // If user clicked directly on a link or reaction chip, don't open popover
+    if (e.target.closest("a") || e.target.closest(".reaction-chip")) return;
+    
     e.stopPropagation();
     openContextMenu(e, msgId, msg);
   });
@@ -553,7 +555,7 @@ function renderSingleMessage(msgId, msg) {
   elements.messagesContainer.appendChild(item);
 }
 
-// Right-Click Context Menu Implementation
+// Left-Click Popover Context Menu Implementation
 function openContextMenu(e, msgId, msg) {
   dismissContextMenu();
 
@@ -565,17 +567,17 @@ function openContextMenu(e, msgId, msg) {
   const emojis = ["👍", "❤️", "😂", "🔥", "🎉", "🚀"];
   let reactionRowHtml = '<div class="context-reaction-row">';
   emojis.forEach(emoji => {
-    reactionRowHtml += `<span onclick="window.toggleReaction('${msgId}', '${emoji}'); window.dismissContextMenu();">${emoji}</span>`;
+    reactionRowHtml += `<span onclick="event.stopPropagation(); window.toggleReaction('${msgId}', '${emoji}'); window.dismissContextMenu();">${emoji}</span>`;
   });
   reactionRowHtml += '</div>';
 
   menu.innerHTML = `
     ${reactionRowHtml}
-    <div class="context-menu-item" onclick="window.copyMessageText('${msgId}')">
+    <div class="context-menu-item" onclick="event.stopPropagation(); window.copyMessageText('${msgId}')">
       <span>📋</span> Copy Text
     </div>
     ${isOwnMessage ? `
-      <div class="context-menu-item danger" onclick="window.deleteMessage('${msgId}')">
+      <div class="context-menu-item danger" onclick="event.stopPropagation(); window.deleteMessage('${msgId}')">
         <span>🗑️</span> Delete Message
       </div>
     ` : ''}
@@ -583,7 +585,7 @@ function openContextMenu(e, msgId, msg) {
 
   document.body.appendChild(menu);
 
-  // Position context menu within viewport bounds
+  // Position context menu near cursor/click
   let left = e.clientX;
   let top = e.clientY;
 

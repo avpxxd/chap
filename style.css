@@ -500,7 +500,7 @@ h1, h2, h3, h4, .brand-text h2 {
   gap: 14px;
   max-width: 85%;
   animation: fadeIn 0.25s ease-out;
-  cursor: context-menu;
+  cursor: pointer;
   position: relative;
 }
 
@@ -572,6 +572,7 @@ h1, h2, h3, h4, .brand-text h2 {
 
 .message-item:hover .msg-bubble {
   border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
 }
 
 .outgoing .msg-bubble {
@@ -625,7 +626,7 @@ h1, h2, h3, h4, .brand-text h2 {
   color: #a5b4fc;
 }
 
-/* Right-Click Context Menu */
+/* Click Popover Context Menu */
 .context-menu {
   position: fixed;
   background: var(--bg-surface-elevated);
