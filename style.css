@@ -25,6 +25,7 @@
   --online-green: #10b981;
   --offline-gray: #64748b;
   --danger: #ef4444;
+  --danger-hover: #dc2626;
   
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -70,10 +71,7 @@ h1, h2, h3, h4, .brand-text h2 {
   overflow: hidden;
 }
 
-/* ==========================================================================
-   Sidebar Styling
-   ========================================================================== */
-
+/* Sidebar Styling */
 .sidebar {
   width: 280px;
   min-width: 280px;
@@ -189,6 +187,7 @@ h1, h2, h3, h4, .brand-text h2 {
   cursor: pointer;
   transition: var(--transition-fast);
   user-select: none;
+  position: relative;
 }
 
 .room-item:hover {
@@ -210,6 +209,34 @@ h1, h2, h3, h4, .brand-text h2 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+}
+
+.room-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delete-room-btn {
+  background: none;
+  border: none;
+  color: var(--text-subtle);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: var(--transition-fast);
+}
+
+.room-item:hover .delete-room-btn {
+  opacity: 1;
+}
+
+.delete-room-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.15);
 }
 
 .unread-badge {
@@ -294,10 +321,7 @@ h1, h2, h3, h4, .brand-text h2 {
   display: block;
 }
 
-/* ==========================================================================
-   Main Chat Section
-   ========================================================================== */
-
+/* Main Chat Section */
 .chat-main {
   flex: 1;
   display: flex;
@@ -476,6 +500,8 @@ h1, h2, h3, h4, .brand-text h2 {
   gap: 14px;
   max-width: 85%;
   animation: fadeIn 0.25s ease-out;
+  cursor: context-menu;
+  position: relative;
 }
 
 @keyframes fadeIn {
@@ -541,6 +567,11 @@ h1, h2, h3, h4, .brand-text h2 {
   word-break: break-word;
   position: relative;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  transition: var(--transition-fast);
+}
+
+.message-item:hover .msg-bubble {
+  border-color: rgba(99, 102, 241, 0.4);
 }
 
 .outgoing .msg-bubble {
@@ -594,45 +625,66 @@ h1, h2, h3, h4, .brand-text h2 {
   color: #a5b4fc;
 }
 
-.add-reaction-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-  opacity: 0.4;
-  transition: opacity 0.2s;
-  padding: 2px 4px;
-}
-
-.message-item:hover .add-reaction-btn {
-  opacity: 1;
-}
-
-.reaction-picker-popover {
-  position: absolute;
+/* Right-Click Context Menu */
+.context-menu {
+  position: fixed;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  padding: 4px 8px;
-  display: flex;
-  gap: 6px;
+  border-radius: var(--radius-md);
+  padding: 8px;
   box-shadow: var(--shadow-main);
-  z-index: 30;
-  top: -36px;
+  z-index: 200;
+  min-width: 180px;
+  backdrop-filter: var(--glass-blur);
+  animation: fadeIn 0.15s ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.outgoing .reaction-picker-popover {
-  right: 0;
+.context-reaction-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
 }
 
-.reaction-picker-popover span {
+.context-reaction-row span {
   cursor: pointer;
   font-size: 1.1rem;
   transition: transform 0.15s ease;
 }
 
-.reaction-picker-popover span:hover {
-  transform: scale(1.3);
+.context-reaction-row span:hover {
+  transform: scale(1.35);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.context-menu-item:hover {
+  background: var(--bg-glass-card);
+  color: #a5b4fc;
+}
+
+.context-menu-item.danger {
+  color: var(--danger);
+}
+
+.context-menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
 }
 
 /* Typing Indicator */
@@ -866,10 +918,7 @@ h1, h2, h3, h4, .brand-text h2 {
   background: var(--bg-glass-card);
 }
 
-/* ==========================================================================
-   Members Drawer (Right Side)
-   ========================================================================== */
-
+/* Members Drawer (Right Side) */
 .members-drawer {
   width: 250px;
   min-width: 250px;
@@ -996,10 +1045,7 @@ h1, h2, h3, h4, .brand-text h2 {
   text-overflow: ellipsis;
 }
 
-/* ==========================================================================
-   Modals
-   ========================================================================== */
-
+/* Modals */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1101,10 +1147,7 @@ h1, h2, h3, h4, .brand-text h2 {
   gap: 10px;
 }
 
-/* ==========================================================================
-   Toasts & Utilities
-   ========================================================================== */
-
+/* Toasts & Utilities */
 .toast-container {
   position: fixed;
   bottom: 24px;

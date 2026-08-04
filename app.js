@@ -60,6 +60,7 @@ let activePresenceListener = null;
 let typingTimeout = null;
 let searchFilterQuery = "";
 let unreadCounts = {};
+let activeContextMenu = null;
 
 // Sound Synthesizer via Web Audio API
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -102,6 +103,14 @@ function playSound(type) {
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
       osc.start(now);
       osc.stop(now + 0.2);
+    } else if (type === 'delete') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+      osc.start(now);
+      osc.stop(now + 0.15);
     }
   } catch (e) {
     console.error("Audio playback error:", e);
@@ -331,7 +340,7 @@ function renderPublicRooms() {
   });
 }
 
-// Render Private Rooms List
+// Render Private Rooms List with Delete Button
 function renderPrivateRooms() {
   elements.privateRoomsList.innerHTML = "";
   if (privateRooms.length === 0) {
@@ -350,11 +359,45 @@ function renderPrivateRooms() {
         <span>🔒</span>
         <span>${room.name}</span>
       </div>
-      ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
+      <div class="room-actions">
+        ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
+        <button class="delete-room-btn" onclick="window.deletePrivateRoom('${room.id}', event)" title="Delete Private Room">🗑️</button>
+      </div>
     `;
     elements.privateRoomsList.appendChild(item);
   });
 }
+
+// Delete Private Room Function
+window.deletePrivateRoom = async function(roomId, event) {
+  if (event) event.stopPropagation();
+  
+  if (!confirm(`Are you sure you want to delete and leave room ${roomId}?`)) {
+    return;
+  }
+
+  // Remove from local state
+  privateRooms = privateRooms.filter(r => r.id !== roomId);
+  localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
+
+  // Clean up RTDB if owner
+  try {
+    await remove(ref(db, `private_rooms/${roomId}`));
+    await remove(ref(db, `messages/${roomId}`));
+  } catch (err) {
+    console.log("Room DB remove info:", err);
+  }
+
+  showToast(`Deleted private room ${roomId}`);
+  playSound('delete');
+
+  // If active room was deleted, switch back to General
+  if (currentRoom.id === roomId) {
+    switchRoom(PUBLIC_ROOMS[0]);
+  } else {
+    renderPrivateRooms();
+  }
+};
 
 // Switch Active Chat Room
 function switchRoom(room) {
@@ -362,6 +405,7 @@ function switchRoom(room) {
   unreadCounts[room.id] = 0;
   renderPublicRooms();
   renderPrivateRooms();
+  dismissContextMenu();
   
   elements.activeRoomTitle.textContent = room.name;
   elements.activeRoomDesc.textContent = room.desc || "Private chat room";
@@ -400,7 +444,7 @@ function loadRoomMessages(roomId) {
         <div class="welcome-message-card">
           <div class="welcome-icon">${currentRoom.icon || '💬'}</div>
           <h2>Welcome to ${currentRoom.name}</h2>
-          <p>No messages here yet. Be the first to start the conversation!</p>
+          <p>No messages here yet. Right-click any message for reactions, copy, and options!</p>
         </div>
       `;
       return;
@@ -494,39 +538,98 @@ function renderSingleMessage(msgId, msg) {
       <div class="msg-bubble">
         ${formattedText}
         ${mediaHtml}
-        <button class="add-reaction-btn" onclick="window.showReactionPicker(event, '${msgId}')" title="Add reaction">➕</button>
       </div>
       ${reactionsHtml}
     </div>
   `;
 
+  // Attach Right-Click Context Menu Listener
+  item.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openContextMenu(e, msgId, msg);
+  });
+
   elements.messagesContainer.appendChild(item);
 }
 
-// Reaction Picker & Helper Functions
-window.showReactionPicker = function(event, msgId) {
-  event.stopPropagation();
-  const existing = document.querySelector(".reaction-picker-popover");
-  if (existing) existing.remove();
+// Right-Click Context Menu Implementation
+function openContextMenu(e, msgId, msg) {
+  dismissContextMenu();
+
+  const isOwnMessage = msg.senderId === currentUser?.uid;
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+  activeContextMenu = menu;
 
   const emojis = ["👍", "❤️", "😂", "🔥", "🎉", "🚀"];
-  const popover = document.createElement("div");
-  popover.className = "reaction-picker-popover";
-
+  let reactionRowHtml = '<div class="context-reaction-row">';
   emojis.forEach(emoji => {
-    const span = document.createElement("span");
-    span.textContent = emoji;
-    span.onclick = () => {
-      window.toggleReaction(msgId, emoji);
-      popover.remove();
-    };
-    popover.appendChild(span);
+    reactionRowHtml += `<span onclick="window.toggleReaction('${msgId}', '${emoji}'); window.dismissContextMenu();">${emoji}</span>`;
   });
+  reactionRowHtml += '</div>';
 
-  const bubble = event.currentTarget.closest(".msg-bubble");
-  bubble.appendChild(popover);
+  menu.innerHTML = `
+    ${reactionRowHtml}
+    <div class="context-menu-item" onclick="window.copyMessageText('${msgId}')">
+      <span>📋</span> Copy Text
+    </div>
+    ${isOwnMessage ? `
+      <div class="context-menu-item danger" onclick="window.deleteMessage('${msgId}')">
+        <span>🗑️</span> Delete Message
+      </div>
+    ` : ''}
+  `;
 
-  document.addEventListener("click", () => popover.remove(), { once: true });
+  document.body.appendChild(menu);
+
+  // Position context menu within viewport bounds
+  let left = e.clientX;
+  let top = e.clientY;
+
+  const menuWidth = menu.offsetWidth || 190;
+  const menuHeight = menu.offsetHeight || 140;
+
+  if (left + menuWidth > window.innerWidth) left = window.innerWidth - menuWidth - 10;
+  if (top + menuHeight > window.innerHeight) top = window.innerHeight - menuHeight - 10;
+
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+window.dismissContextMenu = function() {
+  if (activeContextMenu) {
+    activeContextMenu.remove();
+    activeContextMenu = null;
+  }
+};
+
+window.copyMessageText = function(msgId) {
+  const msgElement = document.getElementById(`msg-${msgId}`);
+  if (msgElement) {
+    const bubble = msgElement.querySelector(".msg-bubble");
+    if (bubble) {
+      const text = bubble.innerText.trim();
+      navigator.clipboard.writeText(text);
+      showToast("Message copied to clipboard!");
+    }
+  }
+  dismissContextMenu();
+};
+
+// Delete Message Function
+window.deleteMessage = async function(msgId) {
+  if (!currentUser) return;
+  
+  try {
+    await remove(ref(db, `messages/${currentRoom.id}/${msgId}`));
+    showToast("Message deleted");
+    playSound('delete');
+  } catch (err) {
+    console.error("Error deleting message:", err);
+    showToast("Could not delete message");
+  }
+  dismissContextMenu();
 };
 
 window.toggleReaction = function(msgId, emoji) {
@@ -735,6 +838,17 @@ function escapeHTML(str) {
 
 // Event Listeners Setup
 function setupEventListeners() {
+  // Dismiss context menu on click anywhere
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".context-menu")) {
+      dismissContextMenu();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") dismissContextMenu();
+  });
+
   // Chat form submit
   elements.chatForm.addEventListener("submit", sendMessage);
 
