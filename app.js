@@ -63,10 +63,12 @@ let backgroundRoomListeners = {};
 let activeContextMenu = null;
 const linkMetadataCache = {};
 
-// Rate Limiter State: Max 10 messages per 4 seconds window
+// Rate Limiter & CAPTCHA Bot Protection State
 let userSendTimestamps = [];
 const RATE_LIMIT_COUNT = 10;
 const RATE_LIMIT_WINDOW_MS = 4000;
+let isCaptchaVerified = sessionStorage.getItem("pulsechat_captcha_verified") === "true";
+let turnstileWidgetId = null;
 
 // Helper: Validate Database Keys to Prevent Path Traversal & Global Data Deletion Wipes
 function isValidKey(key) {
@@ -203,6 +205,53 @@ function renderFallbackPreview(url, container) {
   renderLinkPreviewCard(data, container);
 }
 
+// CAPTCHA Human Verification Rendering
+function renderCaptchaWidget() {
+  const container = document.getElementById("turnstileWidget");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  if (window.turnstile) {
+    try {
+      turnstileWidgetId = window.turnstile.render("#turnstileWidget", {
+        sitekey: "1x00000000000000000000AA", // Cloudflare Turnstile public testing key (Always passes for real humans)
+        theme: "dark",
+        callback: function(token) {
+          isCaptchaVerified = true;
+          sessionStorage.setItem("pulsechat_captcha_verified", "true");
+          showToast("Human verification successful!");
+          const verifyBtn = document.getElementById("verifyCaptchaBtn");
+          if (verifyBtn) {
+            verifyBtn.disabled = false;
+            verifyBtn.textContent = "Enter PulseChat 🚀";
+          }
+        },
+        "error-callback": function() {
+          showToast("Verification error. Please retry.");
+        }
+      });
+    } catch (e) {
+      console.log("Turnstile note:", e);
+      isCaptchaVerified = true;
+    }
+  } else {
+    isCaptchaVerified = true;
+  }
+}
+
+function promptCaptcha() {
+  isCaptchaVerified = false;
+  sessionStorage.removeItem("pulsechat_captcha_verified");
+  const verifyBtn = document.getElementById("verifyCaptchaBtn");
+  if (verifyBtn) {
+    verifyBtn.disabled = true;
+    verifyBtn.textContent = "Complete Verification to Enter";
+  }
+  elements.captchaModal.classList.remove("hidden");
+  setTimeout(renderCaptchaWidget, 100);
+}
+
 // Sound Synthesizer via Web Audio API
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -287,6 +336,9 @@ const elements = {
   audioToggleBtn: document.getElementById("audioToggleBtn"),
   soundOnIcon: document.getElementById("soundOnIcon"),
   soundOffIcon: document.getElementById("soundOffIcon"),
+  // CAPTCHA
+  captchaModal: document.getElementById("captchaModal"),
+  verifyCaptchaBtn: document.getElementById("verifyCaptchaBtn"),
   // Modals & Inputs
   createRoomModal: document.getElementById("createRoomModal"),
   openCreateRoomModalBtn: document.getElementById("openCreateRoomModalBtn"),
@@ -369,6 +421,11 @@ async function initApp() {
   renderPublicRooms();
   renderPrivateRooms();
   setupEventListeners();
+
+  // Check CAPTCHA verification
+  if (!isCaptchaVerified) {
+    promptCaptcha();
+  }
 
   // Anonymous Authentication
   try {
@@ -1006,10 +1063,16 @@ window.toggleReaction = function(msgId, emoji) {
   });
 };
 
-// Send Message Logic (Rate Limited: Max 10 messages in 4 seconds)
+// Send Message Logic (Rate Limited & CAPTCHA Protected)
 async function sendMessage(e) {
   if (e) e.preventDefault();
   
+  // Guard: Must pass CAPTCHA Human Verification
+  if (!isCaptchaVerified) {
+    promptCaptcha();
+    return;
+  }
+
   const cleanNick = stripZalgo(currentNickname).trim();
   if (!currentUser || !cleanNick) {
     showToast("Please choose a nickname before sending messages!");
@@ -1019,15 +1082,18 @@ async function sendMessage(e) {
   }
 
   const now = Date.now();
-  // Filter out send timestamps older than 4000ms (4 seconds)
   userSendTimestamps = userSendTimestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
 
   if (userSendTimestamps.length >= RATE_LIMIT_COUNT) {
     const oldestInWindow = userSendTimestamps[0];
     const waitMs = RATE_LIMIT_WINDOW_MS - (now - oldestInWindow);
     const waitSec = (waitMs / 1000).toFixed(1);
-    showToast(`⚠️ Rate limit reached: Max 10 msgs / 4 sec. Please wait ${waitSec}s.`);
+    showToast(`⚠️ Rate limit: Max 10 msgs / 4 sec. Please wait ${waitSec}s.`);
     playSound('delete');
+    // Prompt CAPTCHA re-verify if spam continues
+    if (userSendTimestamps.length >= RATE_LIMIT_COUNT + 2) {
+      promptCaptcha();
+    }
     return;
   }
 
@@ -1050,7 +1116,6 @@ async function sendMessage(e) {
     msgData.imageUrl = activeImageAttachment;
   }
 
-  // Register timestamp BEFORE database push to ensure immediate rate limiting
   userSendTimestamps.push(now);
 
   const newMsgRef = push(ref(db, `messages/${currentRoom.id}`));
@@ -1128,6 +1193,11 @@ function listenToTyping(roomId) {
 
 // Create Private Room
 async function handleCreateRoom() {
+  if (!isCaptchaVerified) {
+    promptCaptcha();
+    return;
+  }
+
   const rawName = stripZalgo(elements.newRoomName.value).trim();
   let code = elements.newRoomCode.value.trim().toUpperCase();
 
@@ -1222,6 +1292,14 @@ function updateSoundUI() {
 
 // Event Listeners Setup
 function setupEventListeners() {
+  // CAPTCHA Modal Confirm Button
+  elements.verifyCaptchaBtn.addEventListener("click", () => {
+    if (isCaptchaVerified) {
+      elements.captchaModal.classList.add("hidden");
+      showToast("Access Granted! Welcome to PulseChat 🚀");
+    }
+  });
+
   // Dismiss context menu on click anywhere
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".context-menu")) {

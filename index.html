@@ -3,267 +3,283 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chapp - Live Realtime Chat</title>
-  <meta name="description" content="A sleek, instant live chat application with public channels and private room codes. Powered by Firebase Realtime Database.">
+  <title>PulseChat - Live Realtime Chat</title>
+  <meta name="description" content="A stunning dark glassmorphic real-time chat application with public channels and private room code sharing.">
   
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
   
+  <!-- Cloudflare Turnstile CAPTCHA Script -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+  
   <!-- Main Stylesheet -->
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="dark-theme">
-  <div id="app" class="app-container">
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
+<body>
+  <div class="app-container">
+    
+    <!-- Mobile Sidebar Backdrop -->
+    <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="sidebar">
       <div class="brand">
         <div class="brand-logo">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-            <circle cx="9" cy="10" r="1" fill="currentColor"></circle>
-            <circle cx="12" cy="10" r="1" fill="currentColor"></circle>
-            <circle cx="15" cy="10" r="1" fill="currentColor"></circle>
           </svg>
         </div>
         <div class="brand-text">
-          <h2>Chapp</h2>
-          <span class="online-status-pill">
-            <span class="status-dot"></span> Realtime
-          </span>
+          <h2>PulseChat</h2>
+          <span class="online-status-pill"><span class="status-dot"></span> Live Realtime</span>
         </div>
-        <button class="mobile-close-btn" id="closeSidebarBtn" aria-label="Close sidebar">✕</button>
+        <button id="closeSidebarBtn" class="mobile-close-btn" aria-label="Close Sidebar">✕</button>
       </div>
 
-      <!-- Public Rooms Section -->
+      <!-- Public Channels List -->
       <div class="sidebar-section">
         <div class="section-title">
           <span>PUBLIC CHANNELS</span>
         </div>
-        <nav class="room-list" id="publicRoomsList">
-          <!-- Dynamically populated public rooms -->
-        </nav>
+        <div id="publicRoomsList" class="room-list">
+          <!-- Dynamically populated by JS -->
+        </div>
       </div>
 
-      <!-- Private Rooms Section -->
+      <!-- Private Rooms List -->
       <div class="sidebar-section">
         <div class="section-title">
-          <span>MY PRIVATE ROOMS</span>
-          <button class="icon-btn-sm" id="openCreateRoomModalBtn" title="Create Private Room">+</button>
+          <span>PRIVATE ROOMS</span>
+          <div class="section-actions">
+            <button id="openJoinRoomModalBtn" class="icon-btn-sm" title="Join Room Code">🔗 Join</button>
+            <button id="openCreateRoomModalBtn" class="icon-btn-sm" title="Create Room">➕ New</button>
+          </div>
         </div>
-        <nav class="room-list" id="privateRoomsList">
-          <div class="empty-rooms-hint">No private rooms joined yet.</div>
-        </nav>
-        <button class="btn btn-outline btn-full mt-2" id="openJoinRoomModalBtn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
-          Join via Code
-        </button>
+        <div id="privateRoomsList" class="room-list">
+          <!-- Dynamically populated by JS -->
+        </div>
       </div>
 
-      <!-- User Profile Card in Sidebar -->
+      <!-- User Profile Box -->
       <div class="user-profile-card">
-        <div class="user-avatar" id="currentUserAvatar">?</div>
+        <div id="currentUserAvatar" class="user-avatar">G</div>
         <div class="user-info">
           <div class="user-name-wrapper">
-            <span class="user-name" id="currentUserName">Guest User</span>
-            <button class="edit-name-btn" id="editNameBtn" title="Edit Nickname">✏️</button>
+            <span id="currentUserName" class="user-name">Guest User</span>
+            <button id="editNameBtn" class="edit-name-btn" title="Edit Display Name">✏️</button>
           </div>
-          <span class="user-id-sub" id="currentUserIdSub">Connecting...</span>
+          <span id="currentUserIdSub" class="user-id-sub">Connecting...</span>
         </div>
-        <button class="icon-btn" id="audioToggleBtn" title="Toggle Sound Effects">
-          <svg id="soundOnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
-          <svg id="soundOffIcon" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+        <button id="audioToggleBtn" class="icon-btn" title="Toggle Sound Synth">
+          <span id="soundOnIcon">🔊</span>
+          <span id="soundOffIcon" class="hidden">🔇</span>
         </button>
       </div>
     </aside>
 
-    <!-- Sidebar Backdrop for Mobile -->
-    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
-
-    <!-- Main Chat Area -->
+    <!-- Main Chat Workspace -->
     <main class="chat-main">
-      <!-- Chat Header -->
+      
+      <!-- Top Chat Header -->
       <header class="chat-header">
         <div class="header-left">
-          <button class="mobile-toggle-btn" id="mobileMenuBtn" aria-label="Open menu">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          <button id="mobileMenuBtn" class="mobile-toggle-btn" aria-label="Open Sidebar">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
           </button>
           <div class="channel-info">
             <div class="channel-header-row">
-              <h1 class="channel-title" id="activeRoomTitle">#general</h1>
-              <span class="badge" id="activeRoomBadge">Public</span>
+              <h2 id="activeRoomTitle" class="channel-title">#general</h2>
+              <span id="activeRoomBadge" class="badge">Public</span>
             </div>
-            <p class="channel-desc" id="activeRoomDesc">General discussion channel for everyone</p>
+            <p id="activeRoomDesc" class="channel-desc">General discussion channel for everyone</p>
           </div>
         </div>
 
         <div class="header-actions">
-          <!-- Search box -->
           <div class="search-input-wrapper">
-            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" id="searchInput" placeholder="Search room messages..." />
-            <button class="clear-search-btn hidden" id="clearSearchBtn">✕</button>
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" placeholder="Search messages..." />
+            <button id="clearSearchBtn" class="clear-search-btn hidden">✕</button>
           </div>
-
-          <!-- Share Room Code Button -->
-          <button class="btn btn-secondary btn-sm" id="shareRoomBtn" title="Share this room">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-            <span class="btn-text">Share Room</span>
-          </button>
-
-          <!-- Toggle Right Panel -->
-          <button class="icon-btn" id="toggleUsersBtn" title="Toggle Active Users">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <button id="toggleUsersBtn" class="icon-btn" title="Active Online Members">
+            👥
           </button>
         </div>
       </header>
 
-      <!-- Search Banner Active Alert -->
-      <div class="search-results-bar hidden" id="searchBar">
-        <span>Filtering messages containing "<strong id="searchQueryText"></strong>"</span>
-        <button id="closeSearchBannerBtn">Clear Filter</button>
+      <!-- Active Search Filter Banner -->
+      <div id="searchBar" class="search-results-bar hidden">
+        <span>Filtering messages containing: "<strong id="searchQueryText"></strong>"</span>
+        <button id="closeSearchBannerBtn">Clear Search Filter</button>
       </div>
 
-      <!-- Messages Stream Area -->
-      <div class="messages-container" id="messagesContainer">
-        <!-- Message list populated dynamically -->
-        <div class="welcome-message-card" id="welcomeCard">
-          <div class="welcome-icon">💬</div>
-          <h2>Welcome to PulseChat</h2>
-          <p>Connecting to Firebase Realtime Database...</p>
-        </div>
+      <!-- Messages Stream -->
+      <div id="messagesContainer" class="messages-container">
+        <!-- Dynamically rendered messages -->
       </div>
 
       <!-- Typing Indicator Bar -->
-      <div class="typing-indicator-bar" id="typingIndicator">
-        <div class="typing-dots"><span></span><span></span><span></span></div>
+      <div id="typingIndicator" class="typing-indicator-bar">
+        <div class="typing-dots">
+          <span></span><span></span><span></span>
+        </div>
         <span id="typingText">Someone is typing...</span>
       </div>
 
-      <!-- Attached Image Preview Container -->
-      <div class="attachment-preview-bar hidden" id="attachmentPreviewBar">
+      <!-- Attachment Preview Bar -->
+      <div id="attachmentPreviewBar" class="attachment-preview-bar hidden">
         <div class="preview-thumb-wrapper">
-          <img id="previewImage" src="" alt="Attachment preview" />
-          <button class="remove-attachment-btn" id="removeAttachmentBtn">✕</button>
+          <img id="previewImage" src="" alt="Attachment Preview" />
+          <button id="removeAttachmentBtn" class="remove-attachment-btn">✕</button>
         </div>
-        <span class="preview-filename">Image attached</span>
+        <span class="preview-filename">Image attached ready to send</span>
       </div>
 
-      <!-- Chat Input Form -->
+      <!-- Message Form Footer -->
       <footer class="chat-input-footer">
-        <form class="chat-form" id="chatForm">
-          <label class="icon-btn attach-btn" title="Attach Image">
-            <input type="file" id="imageInput" accept="image/*" class="hidden-file-input">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-          </label>
-
+        <form id="chatForm" class="chat-form">
+          <input type="file" id="imageInput" accept="image/*" class="hidden-file-input" />
+          <button type="button" class="icon-btn" onclick="document.getElementById('imageInput').click()" title="Attach Image">
+            📎
+          </button>
           <div class="input-wrapper">
-            <textarea id="messageInput" placeholder="Type a message into #general..." rows="1" autocomplete="off"></textarea>
+            <textarea id="messageInput" placeholder="Type a message in #general..." rows="1"></textarea>
           </div>
-
-          <button type="submit" class="btn btn-primary send-btn" id="sendBtn" title="Send Message">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          <button type="submit" class="btn btn-primary send-btn" title="Send Message">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
           </button>
         </form>
       </footer>
     </main>
 
-    <!-- Right Drawer: Active Users & Room Info -->
-    <aside class="members-drawer" id="membersDrawer">
-      <div class="members-header">
-        <h3>ACTIVE PARTICIPANTS</h3>
-        <span class="count-badge" id="onlineCountBadge">0</span>
-      </div>
-
-      <div class="room-code-banner hidden" id="roomCodeBanner">
-        <span class="code-label">ROOM CODE</span>
+    <!-- Right Drawer: Active Room Online Members & Room Code -->
+    <aside id="membersDrawer" class="members-drawer">
+      <div id="roomCodeBanner" class="room-code-banner hidden">
+        <span class="code-label">SHAREABLE PRIVATE CODE</span>
         <div class="code-box">
-          <strong id="displayRoomCode">XXXXXX</strong>
-          <button class="icon-btn-sm" id="copyRoomCodeBtn" title="Copy Code">📋</button>
+          <strong id="displayRoomCode">ROOM-XXXXXX</strong>
+          <button id="copyRoomCodeBtn" class="icon-btn-sm" title="Copy Code">📋</button>
         </div>
-        <p class="code-hint">Share this code with friends to join!</p>
+        <button id="shareRoomBtn" class="btn btn-outline btn-sm btn-full mt-2">
+          🔗 Copy Share Link
+        </button>
       </div>
 
-      <div class="members-list" id="membersList">
-        <!-- Populated dynamically with active presence -->
+      <div class="members-header">
+        <h3>ACTIVE MEMBERS</h3>
+        <span id="onlineCountBadge" class="count-badge">0</span>
+      </div>
+
+      <div id="membersList" class="members-list">
+        <!-- Dynamically rendered online members -->
       </div>
     </aside>
+
+  </div>
+
+  <!-- CAPTCHA Human Verification Modal -->
+  <div id="captchaModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>🛡️ Human Verification Required</h3>
+      </div>
+      <div class="modal-body" style="align-items: center; text-align: center;">
+        <p class="modal-desc">
+          To keep PulseChat safe from automated bots and guest spam, please complete the quick human verification below.
+        </p>
+        <div id="turnstileWidget" class="mt-2" style="min-height: 65px; display: flex; justify-content: center; align-items: center;"></div>
+      </div>
+      <div class="modal-footer" style="justify-content: center;">
+        <button id="verifyCaptchaBtn" class="btn btn-primary" disabled>Complete Verification to Enter</button>
+      </div>
+    </div>
   </div>
 
   <!-- Create Room Modal -->
-  <div class="modal-overlay hidden" id="createRoomModal">
+  <div id="createRoomModal" class="modal-overlay hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>Create Private Room</h3>
-        <button class="modal-close" id="closeCreateModalBtn">✕</button>
+        <h3>Create Private Chat Room</h3>
+        <button id="closeCreateModalBtn" class="modal-close">✕</button>
       </div>
       <div class="modal-body">
-        <p class="modal-desc">Create a secure private room with a unique room code. Anyone with the code or share link can join.</p>
+        <p class="modal-desc">Create a private space and share your room code with friends to chat securely.</p>
         <div class="form-group">
           <label for="newRoomName">Room Name</label>
-          <input type="text" id="newRoomName" placeholder="e.g. Secret Chill Squad" maxlength="30">
+          <input type="text" id="newRoomName" placeholder="e.g. Secret Squad Lounge" />
         </div>
         <div class="form-group">
           <label for="newRoomCode">Custom Room Code (Optional)</label>
           <div class="code-input-row">
-            <input type="text" id="newRoomCode" placeholder="Auto-generated if blank" maxlength="12" style="text-transform: uppercase;">
-            <button class="btn btn-secondary btn-sm" id="genRandomCodeBtn" type="button">🎲 Random</button>
+            <input type="text" id="newRoomCode" placeholder="e.g. SQUAD2026" />
+            <button type="button" id="genRandomCodeBtn" class="btn btn-secondary">🎲 Random</button>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" id="cancelCreateModalBtn">Cancel</button>
-        <button class="btn btn-primary" id="confirmCreateRoomBtn">Create & Join</button>
+        <button id="cancelCreateModalBtn" class="btn btn-outline">Cancel</button>
+        <button id="confirmCreateRoomBtn" class="btn btn-primary">Create & Join</button>
       </div>
     </div>
   </div>
 
   <!-- Join Room Modal -->
-  <div class="modal-overlay hidden" id="joinRoomModal">
+  <div id="joinRoomModal" class="modal-overlay hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>Join Private Room</h3>
-        <button class="modal-close" id="closeJoinModalBtn">✕</button>
+        <h3>Join Private Room by Code</h3>
+        <button id="closeJoinModalBtn" class="modal-close">✕</button>
       </div>
       <div class="modal-body">
-        <p class="modal-desc">Enter the private room code shared by your friend to join the live conversation.</p>
+        <p class="modal-desc">Enter a private room code shared by a friend to join their channel.</p>
         <div class="form-group">
-          <label for="joinRoomCodeInput">Room Code</label>
-          <input type="text" id="joinRoomCodeInput" placeholder="e.g. ROOM-7X9K2" style="text-transform: uppercase;" maxlength="20">
+          <label for="joinRoomCodeInput">Private Room Code</label>
+          <input type="text" id="joinRoomCodeInput" placeholder="e.g. ROOM-X8A29F" />
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" id="cancelJoinModalBtn">Cancel</button>
-        <button class="btn btn-primary" id="confirmJoinRoomBtn">Join Room</button>
+        <button id="cancelJoinModalBtn" class="btn btn-outline">Cancel</button>
+        <button id="confirmJoinRoomBtn" class="btn btn-primary">Join Room</button>
       </div>
     </div>
   </div>
 
-  <!-- Nickname Edit Modal -->
-  <div class="modal-overlay hidden" id="editNameModal">
+  <!-- Edit Nickname Modal -->
+  <div id="editNameModal" class="modal-overlay hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>Set Your Display Name</h3>
-        <button class="modal-close" id="closeNameModalBtn">✕</button>
+        <h3>Change Display Nickname</h3>
+        <button id="closeNameModalBtn" class="modal-close">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label for="nicknameInput">Choose a Nickname</label>
-          <input type="text" id="nicknameInput" placeholder="e.g. CyberNinja" maxlength="20">
+          <label for="nicknameInput">Your Nickname</label>
+          <input type="text" id="nicknameInput" placeholder="Enter your handle..." maxlength="30" />
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" id="cancelNameModalBtn">Cancel</button>
-        <button class="btn btn-primary" id="saveNicknameBtn">Save Name</button>
+        <button id="cancelNameModalBtn" class="btn btn-outline">Cancel</button>
+        <button id="saveNicknameBtn" class="btn btn-primary">Save Changes</button>
       </div>
     </div>
   </div>
 
-  <!-- Share Link Toast Notification -->
-  <div class="toast-container" id="toastContainer"></div>
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
 
-  <!-- Application Logic -->
+  <!-- Main JavaScript App -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
