@@ -53,13 +53,13 @@ let currentRoom = PUBLIC_ROOMS[0];
 let privateRooms = JSON.parse(localStorage.getItem("pulsechat_private_rooms") || "[]");
 let soundMuted = localStorage.getItem("pulsechat_sound_muted") === "true";
 let activeImageAttachment = null;
-let currentMessageListener = null;
-let currentReactionListener = null;
+let activeRoomMessageUnsubscribe = null;
 let currentTypingListener = null;
 let activePresenceListener = null;
 let typingTimeout = null;
 let searchFilterQuery = "";
 let unreadCounts = {};
+let backgroundRoomListeners = {};
 let activeContextMenu = null;
 
 // Sound Synthesizer via Web Audio API
@@ -232,6 +232,7 @@ async function initApp() {
     
     updateUserUI();
     setupPresence();
+    subscribeAllBackgroundRoomNotifications();
     
     // Check URL parameters for private room code
     const urlParams = new URLSearchParams(window.location.search);
@@ -245,6 +246,43 @@ async function initApp() {
     console.error("Firebase Auth Error:", error);
     showToast("Authentication error. Refreshing...");
   }
+}
+
+// Setup Background Notifications for Unread Badges across Channels
+function subscribeAllBackgroundRoomNotifications() {
+  const allRooms = [...PUBLIC_ROOMS, ...privateRooms];
+  allRooms.forEach(room => subscribeRoomBackground(room));
+}
+
+function subscribeRoomBackground(room) {
+  if (backgroundRoomListeners[room.id]) return;
+
+  const messagesRef = ref(db, `messages/${room.id}`);
+  let isInitialSync = true;
+
+  // Track initial snapshot to prevent old messages triggering notifications
+  get(messagesRef).then(() => {
+    isInitialSync = false;
+  }).catch(() => {
+    isInitialSync = false;
+  });
+
+  const unsubscribe = onChildAdded(messagesRef, (snapshot) => {
+    if (isInitialSync) return;
+    const msg = snapshot.val();
+    if (!msg) return;
+
+    // If message is in another room and sent by another user
+    if (room.id !== currentRoom.id && msg.senderId !== currentUser?.uid) {
+      unreadCounts[room.id] = (unreadCounts[room.id] || 0) + 1;
+      renderPublicRooms();
+      renderPrivateRooms();
+      playSound('receive');
+      showToast(`💬 ${room.name}: ${msg.senderName || 'Someone'}: "${msg.text || 'Image attachment'}"`);
+    }
+  });
+
+  backgroundRoomListeners[room.id] = unsubscribe;
 }
 
 // Setup User Online Presence with RTDB
@@ -399,7 +437,7 @@ window.deletePrivateRoom = async function(roomId, event) {
   }
 };
 
-// Switch Active Chat Room
+// Switch Active Chat Room (ONLY called on explicit user action)
 function switchRoom(room) {
   currentRoom = room;
   unreadCounts[room.id] = 0;
@@ -427,15 +465,17 @@ function switchRoom(room) {
   playSound('join');
 }
 
-// Load Messages for Room
+// Load Messages for Active Room
 function loadRoomMessages(roomId) {
-  if (currentMessageListener) currentMessageListener();
+  if (activeRoomMessageUnsubscribe) activeRoomMessageUnsubscribe();
   elements.messagesContainer.innerHTML = "";
 
   const messagesRef = ref(db, `messages/${roomId}`);
-  let isFirstLoad = true;
 
-  onValue(messagesRef, (snapshot) => {
+  activeRoomMessageUnsubscribe = onValue(messagesRef, (snapshot) => {
+    // Make sure snapshot still matches current active room
+    if (currentRoom.id !== roomId) return;
+
     const messages = snapshot.val();
     elements.messagesContainer.innerHTML = "";
 
@@ -467,18 +507,6 @@ function loadRoomMessages(roomId) {
       elements.messagesContainer.innerHTML = `<div class="empty-rooms-hint" style="text-align: center; padding: 40px;">No messages matched "${searchFilterQuery}".</div>`;
     } else {
       elements.messagesContainer.scrollTop = elements.messagesContainer.scrollHeight;
-    }
-
-    if (isFirstLoad) {
-      isFirstLoad = false;
-    }
-  });
-
-  // Listen to incoming new messages for sound notification
-  currentMessageListener = onChildAdded(messagesRef, (snapshot) => {
-    const msg = snapshot.val();
-    if (!isFirstLoad && msg && msg.senderId !== currentUser?.uid) {
-      playSound('receive');
     }
   });
 }
@@ -771,6 +799,7 @@ async function handleCreateRoom() {
   elements.newRoomName.value = "";
   elements.newRoomCode.value = "";
 
+  subscribeRoomBackground(roomObj);
   showToast(`Created private room: ${code}`);
   switchRoom(roomObj);
 }
@@ -785,33 +814,30 @@ async function joinRoomByCode(codeToJoin) {
 
   try {
     const snapshot = await get(ref(db, `private_rooms/${code}`));
+    let roomObj;
     if (snapshot.exists()) {
-      const roomObj = snapshot.val();
-      if (!privateRooms.some(r => r.id === code)) {
-        privateRooms.push(roomObj);
-        localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
-      }
-      elements.joinRoomModal.classList.add("hidden");
-      elements.joinRoomCodeInput.value = "";
-      showToast(`Joined room: ${roomObj.name}`);
-      switchRoom(roomObj);
+      roomObj = snapshot.val();
     } else {
       // Fallback: create ad-hoc private room object for code
-      const roomObj = {
+      roomObj = {
         id: code,
         code: code,
         name: `Private Room (${code})`,
         isPrivate: true
       };
-      if (!privateRooms.some(r => r.id === code)) {
-        privateRooms.push(roomObj);
-        localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
-      }
-      elements.joinRoomModal.classList.add("hidden");
-      elements.joinRoomCodeInput.value = "";
-      showToast(`Joined room code: ${code}`);
-      switchRoom(roomObj);
     }
+
+    if (!privateRooms.some(r => r.id === code)) {
+      privateRooms.push(roomObj);
+      localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
+    }
+
+    elements.joinRoomModal.classList.add("hidden");
+    elements.joinRoomCodeInput.value = "";
+    
+    subscribeRoomBackground(roomObj);
+    showToast(`Joined room: ${roomObj.name}`);
+    switchRoom(roomObj);
   } catch (err) {
     console.error("Error joining room code:", err);
     showToast("Could not find room code.");
