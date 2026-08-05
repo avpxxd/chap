@@ -182,12 +182,10 @@ const elements = {
   membersDrawer: document.getElementById("membersDrawer")
 };
 
-// HTML Escaper to Prevent XSS Attacks
-function escapeHTML(str) {
+// Zalgo Glitch Character Sanitizer Utility
+function stripZalgo(str) {
   if (str === null || str === undefined) return '';
-  return String(str).replace(/[&<>'"]/g, 
-    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
-  );
+  return String(str).replace(/[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]/g, '');
 }
 
 // Generate Random 6-char Room Code
@@ -200,7 +198,7 @@ function generateRandomCode() {
   return result;
 }
 
-// Show Toast Notification (Safe against XSS by using textContent)
+// Show Toast Notification (Safe against XSS by using textContent nodes)
 function showToast(message, duration = 3000) {
   const toast = document.createElement("div");
   toast.className = "toast";
@@ -209,7 +207,7 @@ function showToast(message, duration = 3000) {
   icon.textContent = "✨";
   
   const textSpan = document.createElement("span");
-  textSpan.textContent = message;
+  textSpan.textContent = stripZalgo(message);
 
   toast.appendChild(icon);
   toast.appendChild(textSpan);
@@ -334,7 +332,7 @@ function updatePresenceRoom(roomId) {
   set(ref(db, `status/${currentUser.uid}/roomId`), roomId);
 }
 
-// Listen to Active Members in Current Room (XSS Protected)
+// Listen to Active Members in Current Room (DOM Nodes - 100% XSS Immune)
 function listenToRoomMembers(roomId) {
   if (activePresenceListener) activePresenceListener();
   
@@ -351,16 +349,28 @@ function listenToRoomMembers(roomId) {
         item.className = "member-item";
         
         const rawName = user.name || "Anonymous User";
-        const safeName = escapeHTML(rawName);
-        const initial = escapeHTML(rawName.charAt(0).toUpperCase());
-        
-        item.innerHTML = `
-          <div class="member-avatar-wrapper">
-            <div class="member-avatar">${initial}</div>
-            <div class="member-status-dot"></div>
-          </div>
-          <span class="member-name">${safeName}</span>
-        `;
+        const cleanName = stripZalgo(rawName);
+        const initial = (cleanName.charAt(0) || "G").toUpperCase();
+
+        const avatarWrapper = document.createElement("div");
+        avatarWrapper.className = "member-avatar-wrapper";
+
+        const avatar = document.createElement("div");
+        avatar.className = "member-avatar";
+        avatar.textContent = initial;
+
+        const dot = document.createElement("div");
+        dot.className = "member-status-dot";
+
+        avatarWrapper.appendChild(avatar);
+        avatarWrapper.appendChild(dot);
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "member-name";
+        nameSpan.textContent = cleanName;
+
+        item.appendChild(avatarWrapper);
+        item.appendChild(nameSpan);
         elements.membersList.appendChild(item);
       }
     });
@@ -369,15 +379,16 @@ function listenToRoomMembers(roomId) {
   });
 }
 
-// Update User UI (XSS Protected)
+// Update User UI (DOM Nodes - 100% XSS Immune)
 function updateUserUI() {
   if (!currentUser) return;
-  elements.currentUserName.textContent = currentNickname;
-  elements.currentUserAvatar.textContent = currentNickname.charAt(0).toUpperCase();
+  const cleanNick = stripZalgo(currentNickname);
+  elements.currentUserName.textContent = cleanNick;
+  elements.currentUserAvatar.textContent = (cleanNick.charAt(0) || "G").toUpperCase();
   elements.currentUserIdSub.textContent = `ID: ${currentUser.uid.substring(0, 8)}`;
 }
 
-// Render Public Channels List (XSS Protected)
+// Render Public Channels List (DOM Nodes - 100% XSS Immune)
 function renderPublicRooms() {
   elements.publicRoomsList.innerHTML = "";
   PUBLIC_ROOMS.forEach(room => {
@@ -386,24 +397,39 @@ function renderPublicRooms() {
     item.onclick = () => switchRoom(room);
     
     const unread = unreadCounts[room.id] || 0;
-    const safeRoomName = escapeHTML(room.name);
     
-    item.innerHTML = `
-      <div class="room-item-name">
-        <span>${room.icon}</span>
-        <span>${safeRoomName}</span>
-      </div>
-      ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
-    `;
+    const nameDiv = document.createElement("div");
+    nameDiv.className = "room-item-name";
+
+    const iconSpan = document.createElement("span");
+    iconSpan.textContent = room.icon;
+
+    const titleSpan = document.createElement("span");
+    titleSpan.textContent = room.name;
+
+    nameDiv.appendChild(iconSpan);
+    nameDiv.appendChild(titleSpan);
+    item.appendChild(nameDiv);
+
+    if (unread > 0) {
+      const badge = document.createElement("span");
+      badge.className = "unread-badge";
+      badge.textContent = unread;
+      item.appendChild(badge);
+    }
+
     elements.publicRoomsList.appendChild(item);
   });
 }
 
-// Render Private Rooms List (XSS Protected)
+// Render Private Rooms List (DOM Nodes - 100% XSS Immune)
 function renderPrivateRooms() {
   elements.privateRoomsList.innerHTML = "";
   if (privateRooms.length === 0) {
-    elements.privateRoomsList.innerHTML = `<div class="empty-rooms-hint">No private rooms joined yet.</div>`;
+    const hint = document.createElement("div");
+    hint.className = "empty-rooms-hint";
+    hint.textContent = "No private rooms joined yet.";
+    elements.privateRoomsList.appendChild(hint);
     return;
   }
 
@@ -413,18 +439,38 @@ function renderPrivateRooms() {
     item.onclick = () => switchRoom(room);
     
     const unread = unreadCounts[room.id] || 0;
-    const safeRoomName = escapeHTML(room.name);
     
-    item.innerHTML = `
-      <div class="room-item-name">
-        <span>🔒</span>
-        <span>${safeRoomName}</span>
-      </div>
-      <div class="room-actions">
-        ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
-        <button class="delete-room-btn" onclick="window.deletePrivateRoom('${escapeHTML(room.id)}', event)" title="Delete Private Room">🗑️</button>
-      </div>
-    `;
+    const nameDiv = document.createElement("div");
+    nameDiv.className = "room-item-name";
+
+    const iconSpan = document.createElement("span");
+    iconSpan.textContent = "🔒";
+
+    const titleSpan = document.createElement("span");
+    titleSpan.textContent = room.name;
+
+    nameDiv.appendChild(iconSpan);
+    nameDiv.appendChild(titleSpan);
+    item.appendChild(nameDiv);
+
+    const actionsDiv = document.createElement("div");
+    actionsDiv.className = "room-actions";
+
+    if (unread > 0) {
+      const badge = document.createElement("span");
+      badge.className = "unread-badge";
+      badge.textContent = unread;
+      actionsDiv.appendChild(badge);
+    }
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "delete-room-btn";
+    delBtn.textContent = "🗑️";
+    delBtn.title = "Delete Private Room";
+    delBtn.onclick = (e) => window.deletePrivateRoom(room.id, e);
+    actionsDiv.appendChild(delBtn);
+
+    item.appendChild(actionsDiv);
     elements.privateRoomsList.appendChild(item);
   });
 }
@@ -499,13 +545,23 @@ function loadRoomMessages(roomId) {
     elements.messagesContainer.innerHTML = "";
 
     if (!messages) {
-      elements.messagesContainer.innerHTML = `
-        <div class="welcome-message-card">
-          <div class="welcome-icon">${currentRoom.icon || '💬'}</div>
-          <h2>Welcome to ${escapeHTML(currentRoom.name)}</h2>
-          <p>No messages here yet. Right-click any message for reactions, copy, and options!</p>
-        </div>
-      `;
+      const welcomeCard = document.createElement("div");
+      welcomeCard.className = "welcome-message-card";
+      
+      const icon = document.createElement("div");
+      icon.className = "welcome-icon";
+      icon.textContent = currentRoom.icon || '💬';
+
+      const h2 = document.createElement("h2");
+      h2.textContent = `Welcome to ${currentRoom.name}`;
+
+      const p = document.createElement("p");
+      p.textContent = "No messages here yet. Right-click any message for reactions, copy, and options!";
+
+      welcomeCard.appendChild(icon);
+      welcomeCard.appendChild(h2);
+      welcomeCard.appendChild(p);
+      elements.messagesContainer.appendChild(welcomeCard);
       return;
     }
 
@@ -523,38 +579,96 @@ function loadRoomMessages(roomId) {
     });
 
     if (searchFilterQuery && !hasMatchedSearch) {
-      elements.messagesContainer.innerHTML = `<div class="empty-rooms-hint" style="text-align: center; padding: 40px;">No messages matched "${escapeHTML(searchFilterQuery)}".</div>`;
+      const empty = document.createElement("div");
+      empty.className = "empty-rooms-hint";
+      empty.style.textAlign = "center";
+      empty.style.padding = "40px";
+      empty.textContent = `No messages matched "${searchFilterQuery}".`;
+      elements.messagesContainer.appendChild(empty);
     } else {
       elements.messagesContainer.scrollTop = elements.messagesContainer.scrollHeight;
     }
   });
 }
 
-// Render Single Message in Stream (XSS Protected)
+// Render Single Message in Stream (100% DOM Construction - Zero XSS Risk)
 function renderSingleMessage(msgId, msg) {
   const isOutgoing = msg.senderId === currentUser?.uid;
   const item = document.createElement("div");
   item.className = `message-item ${isOutgoing ? 'outgoing' : ''}`;
   item.id = `msg-${msgId}`;
 
+  // 1. Avatar (textContent DOM node - safe against unclosed tag parsing)
   const rawSender = msg.senderName || "User";
-  const safeSender = escapeHTML(rawSender);
-  const initial = escapeHTML(rawSender.charAt(0).toUpperCase());
+  const cleanSender = stripZalgo(rawSender);
+  const initial = (cleanSender.charAt(0) || "U").toUpperCase();
+  
+  const avatar = document.createElement("div");
+  avatar.className = "msg-avatar";
+  avatar.textContent = initial;
 
-  // Auto-convert URLs into clickable links safely
-  let formattedText = escapeHTML(msg.text || "");
+  // 2. Msg Body Container
+  const body = document.createElement("div");
+  body.className = "msg-body";
+
+  // 3. Header (Author + Time textNodes)
+  const header = document.createElement("div");
+  header.className = "msg-header";
+
+  const author = document.createElement("span");
+  author.className = "msg-author";
+  author.textContent = cleanSender; // 100% plain text node! Zero XSS!
+
+  const time = document.createElement("span");
+  time.className = "msg-time";
+  time.textContent = formatTime(msg.timestamp);
+
+  header.appendChild(author);
+  header.appendChild(time);
+
+  // 4. Bubble Container (Text + Safe Links + Media)
+  const bubble = document.createElement("div");
+  bubble.className = "msg-bubble";
+
+  const rawText = stripZalgo(msg.text || "");
   const urlRegex = /(https?:\/\/[^\s]+)/g;
-  formattedText = formattedText.replace(urlRegex, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #818cf8; underline;">${url}</a>`;
-  });
+  let lastIndex = 0;
+  let match;
 
-  let mediaHtml = "";
-  if (msg.imageUrl) {
-    mediaHtml = `<img src="${escapeHTML(msg.imageUrl)}" class="msg-media-preview" alt="Attachment" loading="lazy" />`;
+  while ((match = urlRegex.exec(rawText)) !== null) {
+    if (match.index > lastIndex) {
+      bubble.appendChild(document.createTextNode(rawText.substring(lastIndex, match.index)));
+    }
+    
+    const a = document.createElement("a");
+    a.href = match[0];
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.style.color = "#818cf8";
+    a.style.textDecoration = "underline";
+    a.textContent = match[0]; // Pure text content!
+    bubble.appendChild(a);
+
+    lastIndex = urlRegex.lastIndex;
   }
 
-  // Reactions HTML (XSS Protected)
-  let reactionsHtml = "";
+  if (lastIndex < rawText.length) {
+    bubble.appendChild(document.createTextNode(rawText.substring(lastIndex)));
+  }
+
+  if (msg.imageUrl && (msg.imageUrl.startsWith("data:image/") || msg.imageUrl.startsWith("http"))) {
+    const img = document.createElement("img");
+    img.src = msg.imageUrl;
+    img.className = "msg-media-preview";
+    img.alt = "Attachment";
+    img.loading = "lazy";
+    bubble.appendChild(img);
+  }
+
+  body.appendChild(header);
+  body.appendChild(bubble);
+
+  // 5. Reactions (textContent DOM nodes)
   if (msg.reactions) {
     const reactionCounts = {};
     const userReacted = {};
@@ -566,33 +680,24 @@ function renderSingleMessage(msgId, msg) {
       }
     });
 
-    reactionsHtml = '<div class="msg-reactions">';
+    const reactionsContainer = document.createElement("div");
+    reactionsContainer.className = "msg-reactions";
+
     Object.entries(reactionCounts).forEach(([emoji, count]) => {
-      reactionsHtml += `
-        <span class="reaction-chip ${userReacted[emoji] ? 'user-reacted' : ''}" onclick="window.toggleReaction('${msgId}', '${escapeHTML(emoji)}')">
-          ${escapeHTML(emoji)} ${count}
-        </span>
-      `;
+      const chip = document.createElement("span");
+      chip.className = `reaction-chip ${userReacted[emoji] ? 'user-reacted' : ''}`;
+      chip.textContent = `${emoji} ${count}`;
+      chip.onclick = () => window.toggleReaction(msgId, emoji);
+      reactionsContainer.appendChild(chip);
     });
-    reactionsHtml += '</div>';
+
+    body.appendChild(reactionsContainer);
   }
 
-  item.innerHTML = `
-    <div class="msg-avatar">${initial}</div>
-    <div class="msg-body">
-      <div class="msg-header">
-        <span class="msg-author">${safeSender}</span>
-        <span class="msg-time">${formatTime(msg.timestamp)}</span>
-      </div>
-      <div class="msg-bubble">
-        ${formattedText}
-        ${mediaHtml}
-      </div>
-      ${reactionsHtml}
-    </div>
-  `;
+  item.appendChild(avatar);
+  item.appendChild(body);
 
-  // Attach Right-Click Context Menu Listener
+  // Context menu listener
   item.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -602,7 +707,7 @@ function renderSingleMessage(msgId, msg) {
   elements.messagesContainer.appendChild(item);
 }
 
-// Right-Click Context Menu Implementation
+// Right-Click Context Menu Implementation (DOM Nodes)
 function openContextMenu(e, msgId, msg) {
   dismissContextMenu();
 
@@ -611,31 +716,39 @@ function openContextMenu(e, msgId, msg) {
   menu.className = "context-menu";
   activeContextMenu = menu;
 
+  const reactionRow = document.createElement("div");
+  reactionRow.className = "context-reaction-row";
   const emojis = ["👍", "❤️", "😂", "🔥", "🎉", "🚀"];
-  let reactionRowHtml = '<div class="context-reaction-row">';
+  
   emojis.forEach(emoji => {
-    reactionRowHtml += `<span onclick="window.toggleReaction('${msgId}', '${emoji}'); window.dismissContextMenu();">${emoji}</span>`;
+    const span = document.createElement("span");
+    span.textContent = emoji;
+    span.onclick = () => {
+      window.toggleReaction(msgId, emoji);
+      window.dismissContextMenu();
+    };
+    reactionRow.appendChild(span);
   });
-  reactionRowHtml += '</div>';
+  menu.appendChild(reactionRow);
 
-  menu.innerHTML = `
-    ${reactionRowHtml}
-    <div class="context-menu-item" onclick="window.copyMessageText('${msgId}')">
-      <span>📋</span> Copy Text
-    </div>
-    ${isOwnMessage ? `
-      <div class="context-menu-item danger" onclick="window.deleteMessage('${msgId}')">
-        <span>🗑️</span> Delete Message
-      </div>
-    ` : ''}
-  `;
+  const copyItem = document.createElement("div");
+  copyItem.className = "context-menu-item";
+  copyItem.innerHTML = `<span>📋</span> Copy Text`;
+  copyItem.onclick = () => window.copyMessageText(msgId);
+  menu.appendChild(copyItem);
+
+  if (isOwnMessage) {
+    const deleteItem = document.createElement("div");
+    deleteItem.className = "context-menu-item danger";
+    deleteItem.innerHTML = `<span>🗑️</span> Delete Message`;
+    deleteItem.onclick = () => window.deleteMessage(msgId);
+    menu.appendChild(deleteItem);
+  }
 
   document.body.appendChild(menu);
 
-  // Position context menu within viewport bounds
   let left = e.clientX;
   let top = e.clientY;
-
   const menuWidth = menu.offsetWidth || 190;
   const menuHeight = menu.offsetHeight || 140;
 
@@ -748,7 +861,7 @@ function clearImageAttachment() {
   elements.attachmentPreviewBar.classList.add("hidden");
 }
 
-// Typing Indicator Functionality (XSS Protected)
+// Typing Indicator Functionality (DOM Nodes - Safe against XSS)
 function handleTyping() {
   if (!currentUser) return;
   const typingRef = ref(db, `typing/${currentRoom.id}/${currentUser.uid}`);
@@ -771,7 +884,7 @@ function listenToTyping(roomId) {
     const data = snapshot.val() || {};
     const typers = Object.values(data)
       .filter(t => t.name !== currentNickname && (Date.now() - t.time < 3000))
-      .map(t => escapeHTML(t.name));
+      .map(t => stripZalgo(t.name));
 
     if (typers.length > 0) {
       elements.typingText.textContent = typers.length === 1 

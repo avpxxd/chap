@@ -188,6 +188,7 @@ h1, h2, h3, h4, .brand-text h2 {
   transition: var(--transition-fast);
   user-select: none;
   position: relative;
+  overflow: hidden;
 }
 
 .room-item:hover {
@@ -501,6 +502,7 @@ h1, h2, h3, h4, .brand-text h2 {
   gap: 14px;
   max-width: 85%;
   min-width: 0;
+  overflow: hidden; /* Clips Zalgo vertical/horizontal character bleeding */
   animation: fadeIn 0.25s ease-out;
   cursor: context-menu;
   position: relative;
@@ -529,6 +531,7 @@ h1, h2, h3, h4, .brand-text h2 {
   justify-content: center;
   flex-shrink: 0;
   box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  overflow: hidden;
 }
 
 .msg-body {
@@ -537,12 +540,14 @@ h1, h2, h3, h4, .brand-text h2 {
   gap: 4px;
   min-width: 0;
   max-width: 100%;
+  overflow: hidden; /* Clips Zalgo glitch text */
 }
 
 .msg-header {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  overflow: hidden;
 }
 
 .outgoing .msg-header {
@@ -576,7 +581,7 @@ h1, h2, h3, h4, .brand-text h2 {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow: hidden; /* Strictly clip Zalgo text vertical bleeding */
   position: relative;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   transition: var(--transition-fast);
@@ -715,6 +720,7 @@ h1, h2, h3, h4, .brand-text h2 {
   height: 24px;
   opacity: 0;
   transition: opacity 0.2s;
+  overflow: hidden;
 }
 
 .typing-indicator-bar.visible {
@@ -1019,6 +1025,7 @@ h1, h2, h3, h4, .brand-text h2 {
   gap: 10px;
   padding: 6px 8px;
   border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
 .member-avatar-wrapper {
@@ -1036,6 +1043,7 @@ h1, h2, h3, h4, .brand-text h2 {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .member-status-dot {
@@ -1189,6 +1197,7 @@ h1, h2, h3, h4, .brand-text h2 {
   gap: 10px;
   animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: auto;
+  overflow: hidden;
 }
 
 @keyframes slideInRight {
