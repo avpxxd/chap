@@ -1,6 +1,10 @@
 // Import Firebase SDK Modules from CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { 
+  initializeAppCheck, 
+  ReCaptchaV3Provider 
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check.js";
+import { 
   getAuth, 
   signInAnonymously, 
   onAuthStateChanged 
@@ -36,6 +40,18 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+
+// Initialize Firebase App Check with reCAPTCHA v3 to Block CLI / Script / Bot API Requests
+let appCheck = null;
+try {
+  appCheck = initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider('6LeEKnYtAAAAAO1dir_infKo91ANyvTUOUKNdN6R'),
+    isTokenAutoRefreshEnabled: true
+  });
+  console.log("Firebase App Check initialized successfully.");
+} catch (e) {
+  console.warn("App Check Note:", e);
+}
 
 // Public Default Channels with FontAwesome Icons
 const PUBLIC_ROOMS = [
