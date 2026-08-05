@@ -63,6 +63,11 @@ let backgroundRoomListeners = {};
 let activeContextMenu = null;
 const linkMetadataCache = {};
 
+// Rate Limiter State: Max 10 messages per 4 seconds window
+let userSendTimestamps = [];
+const RATE_LIMIT_COUNT = 10;
+const RATE_LIMIT_WINDOW_MS = 4000;
+
 // Helper: Validate Database Keys to Prevent Path Traversal & Global Data Deletion Wipes
 function isValidKey(key) {
   if (key === null || key === undefined) return false;
@@ -1001,7 +1006,7 @@ window.toggleReaction = function(msgId, emoji) {
   });
 };
 
-// Send Message Logic
+// Send Message Logic (Rate Limited: Max 10 messages in 4 seconds)
 async function sendMessage(e) {
   if (e) e.preventDefault();
   
@@ -1010,6 +1015,19 @@ async function sendMessage(e) {
     showToast("Please choose a nickname before sending messages!");
     elements.nicknameInput.value = "";
     elements.editNameModal.classList.remove("hidden");
+    return;
+  }
+
+  const now = Date.now();
+  // Filter out send timestamps older than 4000ms (4 seconds)
+  userSendTimestamps = userSendTimestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+
+  if (userSendTimestamps.length >= RATE_LIMIT_COUNT) {
+    const oldestInWindow = userSendTimestamps[0];
+    const waitMs = RATE_LIMIT_WINDOW_MS - (now - oldestInWindow);
+    const waitSec = (waitMs / 1000).toFixed(1);
+    showToast(`⚠️ Rate limit reached: Max 10 msgs / 4 sec. Please wait ${waitSec}s.`);
+    playSound('delete');
     return;
   }
 
@@ -1031,6 +1049,9 @@ async function sendMessage(e) {
   if (activeImageAttachment) {
     msgData.imageUrl = activeImageAttachment;
   }
+
+  // Register timestamp BEFORE database push to ensure immediate rate limiting
+  userSendTimestamps.push(now);
 
   const newMsgRef = push(ref(db, `messages/${currentRoom.id}`));
   await set(newMsgRef, msgData);
