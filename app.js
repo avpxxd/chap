@@ -737,7 +737,7 @@ function loadRoomMessages(roomId) {
   });
 }
 
-// Render Single Message in Stream (GIF Previews & Rich Link OpenGraph Metadata Cards)
+// Render Single Message in Stream (Clean Hierarchy, High-Contrast Text & Unclipped Cards)
 function renderSingleMessage(msgId, msg) {
   const isOutgoing = msg.senderId === currentUser?.uid;
   const item = document.createElement("div");
@@ -771,7 +771,7 @@ function renderSingleMessage(msgId, msg) {
   header.appendChild(author);
   header.appendChild(time);
 
-  // 4. Bubble Container (Text + GIF previews + Safe Hyperlinks)
+  // 4. Bubble Container for Text
   const bubble = document.createElement("div");
   bubble.className = "msg-bubble";
 
@@ -780,6 +780,7 @@ function renderSingleMessage(msgId, msg) {
   let lastIndex = 0;
   let match;
   const siteUrlsToPreview = [];
+  const mediaUrlsToRender = [];
 
   while ((match = urlRegex.exec(rawText)) !== null) {
     const url = match[0];
@@ -787,32 +788,17 @@ function renderSingleMessage(msgId, msg) {
       bubble.appendChild(document.createTextNode(rawText.substring(lastIndex, match.index)));
     }
     
+    // Hyperlinked URL text inside bubble
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = url;
+    bubble.appendChild(a);
+
     if (isMediaUrl(url)) {
-      // Direct GIF or Image URL -> Render inline media element
-      const a = document.createElement("a");
-      a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-
-      const gifImg = document.createElement("img");
-      gifImg.src = url;
-      gifImg.className = "gif-inline-preview";
-      gifImg.alt = "GIF preview";
-      gifImg.loading = "lazy";
-
-      a.appendChild(gifImg);
-      bubble.appendChild(a);
+      mediaUrlsToRender.push(url);
     } else {
-      // Website link -> Render text hyperlink + queue Rich Link Preview Card
-      const a = document.createElement("a");
-      a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.style.color = "#818cf8";
-      a.style.textDecoration = "underline";
-      a.textContent = url;
-      bubble.appendChild(a);
-
       siteUrlsToPreview.push(url);
     }
 
@@ -823,19 +809,47 @@ function renderSingleMessage(msgId, msg) {
     bubble.appendChild(document.createTextNode(rawText.substring(lastIndex)));
   }
 
-  if (msg.imageUrl && (msg.imageUrl.startsWith("data:image/") || msg.imageUrl.startsWith("http"))) {
-    const img = document.createElement("img");
-    img.src = msg.imageUrl;
-    img.className = "msg-media-preview";
-    img.alt = "Attachment";
-    img.loading = "lazy";
-    bubble.appendChild(img);
+  body.appendChild(header);
+
+  // Only append bubble if text exists
+  if (rawText) {
+    body.appendChild(bubble);
   }
 
-  body.appendChild(header);
-  body.appendChild(bubble);
+  // 5. Media Previews (GIFs / Images in dedicated media block below bubble)
+  if (mediaUrlsToRender.length > 0 || msg.imageUrl) {
+    const mediaContainer = document.createElement("div");
+    mediaContainer.className = "msg-media-container";
 
-  // 5. Rich Link Preview Card Container
+    mediaUrlsToRender.forEach(url => {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+
+      const img = document.createElement("img");
+      img.src = url;
+      img.className = "gif-inline-preview";
+      img.alt = "GIF preview";
+      img.loading = "lazy";
+
+      a.appendChild(img);
+      mediaContainer.appendChild(a);
+    });
+
+    if (msg.imageUrl && (msg.imageUrl.startsWith("data:image/") || msg.imageUrl.startsWith("http"))) {
+      const img = document.createElement("img");
+      img.src = msg.imageUrl;
+      img.className = "msg-media-preview";
+      img.alt = "Attachment";
+      img.loading = "lazy";
+      mediaContainer.appendChild(img);
+    }
+
+    body.appendChild(mediaContainer);
+  }
+
+  // 6. Rich Link Preview Card Container (Below bubble)
   if (siteUrlsToPreview.length > 0) {
     const previewContainer = document.createElement("div");
     previewContainer.className = "link-preview-container";
@@ -843,7 +857,7 @@ function renderSingleMessage(msgId, msg) {
     fetchLinkPreview(siteUrlsToPreview[0], previewContainer);
   }
 
-  // 6. Reactions
+  // 7. Reactions
   if (msg.reactions) {
     const reactionCounts = {};
     const userReacted = {};
