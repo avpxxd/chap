@@ -3,9 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chapp - Realtime Chat</title>
+  <title>Chapp - Live Realtime Chat</title>
   <meta name="description" content="A stunning dark glassmorphic real-time chat application with public channels and private room code sharing.">
-  
+
+  <!-- Anti-Clickjacking Frame Busting Guard -->
+  <script>
+    try {
+      if (window.self !== window.top) {
+        // Attempt to break out of iframe
+        window.top.location = window.self.location;
+      }
+    } catch (e) {
+      // Cross-origin iframe sandbox blocked top navigation -> Blank page and block execution!
+      document.documentElement.style.display = 'none';
+      window.addEventListener('DOMContentLoaded', () => {
+        document.body.innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#0b0f19; color:#f8fafc; font-family:sans-serif; text-align:center; padding:20px;">
+            <div style="font-size:3rem; margin-bottom:12px; color:#ef4444;">🛡️</div>
+            <h1 style="font-size:1.8rem; margin-bottom:12px; color:#ef4444; font-weight:700;">Clickjacking Protection Triggered</h1>
+            <p style="font-size:1rem; color:#94a3b8; max-width:480px; line-height:1.5;">Embedding Chapp inside external iframes is disabled for security reasons.</p>
+          </div>
+        `;
+        document.documentElement.style.display = 'block';
+      });
+    }
+  </script>
+
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,7 +57,7 @@
         </div>
         <div class="brand-text">
           <h2>Chapp</h2>
-          <span class="online-status-pill"><span class="status-dot"></span> Online</span>
+          <span class="online-status-pill"><span class="status-dot"></span> Live Realtime</span>
         </div>
         <button id="closeSidebarBtn" class="mobile-close-btn" aria-label="Close Sidebar"><i class="fa-solid fa-xmark"></i></button>
       </div>

@@ -65,10 +65,13 @@ let currentRoomMessagesSnapshot = {};
 let activeReplyTarget = null;
 const linkMetadataCache = {};
 
-// Rate Limiter & CAPTCHA Bot Protection State
+// Rate Limiter & CAPTCHA Bot Protection Parameters
 let userSendTimestamps = [];
-const RATE_LIMIT_COUNT = 10;
+const RATE_LIMIT_COUNT = 10;          // Max 10 messages in 4 seconds
 const RATE_LIMIT_WINDOW_MS = 4000;
+const BURST_LIMIT_COUNT = 3;           // Max 3 messages in 2 seconds
+const BURST_LIMIT_WINDOW_MS = 2000;
+
 let isCaptchaVerified = (sessionStorage.getItem("chapp_captcha_verified") || sessionStorage.getItem("pulsechat_captcha_verified")) === "true";
 let turnstileWidgetId = null;
 
@@ -1033,7 +1036,7 @@ function getReactionIconHtml(key) {
   return map[key] || `<i class="fa-solid fa-thumbs-up"></i>`;
 }
 
-// Right-Click Context Menu Implementation (Includes Reply, Copy, Reactions & Delete)
+// Right-Click Context Menu Implementation
 function openContextMenu(e, msgId, msg) {
   dismissContextMenu();
 
@@ -1178,7 +1181,7 @@ window.toggleReaction = function(msgId, reactionKey) {
   });
 };
 
-// Send Message Logic (Supports Replies)
+// Send Message Logic (Rate Limited, Burst Protected & CAPTCHA Protected)
 async function sendMessage(e) {
   if (e) e.preventDefault();
   
@@ -1198,15 +1201,20 @@ async function sendMessage(e) {
   const now = Date.now();
   userSendTimestamps = userSendTimestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
 
-  if (userSendTimestamps.length >= RATE_LIMIT_COUNT) {
-    const oldestInWindow = userSendTimestamps[0];
-    const waitMs = RATE_LIMIT_WINDOW_MS - (now - oldestInWindow);
-    const waitSec = (waitMs / 1000).toFixed(1);
-    showToast(`⚠️ Rate limit: Max 10 msgs / 4 sec. Please wait ${waitSec}s.`, 3000, "fa-solid fa-gauge-high");
+  // Condition A: Fast burst check (3 messages sent in under 2 seconds)
+  const burstTimestamps = userSendTimestamps.filter(t => now - t < BURST_LIMIT_WINDOW_MS);
+  if (burstTimestamps.length >= BURST_LIMIT_COUNT - 1) {
+    showToast("⚠️ Fast typing burst detected! Human verification required.", 3000, "fa-solid fa-shield-halved");
     playSound('delete');
-    if (userSendTimestamps.length >= RATE_LIMIT_COUNT + 2) {
-      promptCaptcha();
-    }
+    promptCaptcha();
+    return;
+  }
+
+  // Condition B: Overall Rate Limit (10 messages in 4 seconds)
+  if (userSendTimestamps.length >= RATE_LIMIT_COUNT) {
+    showToast("⚠️ Rate limit reached (10 msgs / 4s). Human verification required.", 3000, "fa-solid fa-shield-halved");
+    playSound('delete');
+    promptCaptcha();
     return;
   }
 
