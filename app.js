@@ -61,6 +61,8 @@ let searchFilterQuery = "";
 let unreadCounts = {};
 let backgroundRoomListeners = {};
 let activeContextMenu = null;
+let currentRoomMessagesSnapshot = {};
+let activeReplyTarget = null;
 const linkMetadataCache = {};
 
 // Rate Limiter & CAPTCHA Bot Protection State
@@ -324,6 +326,10 @@ const elements = {
   attachmentPreviewBar: document.getElementById("attachmentPreviewBar"),
   previewImage: document.getElementById("previewImage"),
   removeAttachmentBtn: document.getElementById("removeAttachmentBtn"),
+  replyPreviewBar: document.getElementById("replyPreviewBar"),
+  replyToSender: document.getElementById("replyToSender"),
+  replyToText: document.getElementById("replyToText"),
+  cancelReplyBtn: document.getElementById("cancelReplyBtn"),
   typingIndicator: document.getElementById("typingIndicator"),
   typingText: document.getElementById("typingText"),
   membersList: document.getElementById("membersList"),
@@ -580,7 +586,7 @@ function updateUserUI() {
   elements.currentUserIdSub.textContent = `ID: ${currentUser.uid.substring(0, 8)}`;
 }
 
-// Render Public Channels List (FontAwesome Icons)
+// Render Public Channels List
 function renderPublicRooms() {
   elements.publicRoomsList.innerHTML = "";
   PUBLIC_ROOMS.forEach(room => {
@@ -614,7 +620,7 @@ function renderPublicRooms() {
   });
 }
 
-// Render Private Rooms List (FontAwesome Icons)
+// Render Private Rooms List
 function renderPrivateRooms() {
   elements.privateRoomsList.innerHTML = "";
   if (privateRooms.length === 0) {
@@ -710,6 +716,7 @@ function switchRoom(room) {
   if (!room || !isValidKey(room.id)) return;
   currentRoom = room;
   unreadCounts[room.id] = 0;
+  window.cancelReply();
   renderPublicRooms();
   renderPrivateRooms();
   dismissContextMenu();
@@ -745,10 +752,11 @@ function loadRoomMessages(roomId) {
   activeRoomMessageUnsubscribe = onValue(messagesRef, (snapshot) => {
     if (currentRoom.id !== roomId) return;
 
-    const messages = snapshot.val();
+    const messages = snapshot.val() || {};
+    currentRoomMessagesSnapshot = messages;
     elements.messagesContainer.innerHTML = "";
 
-    if (!messages) {
+    if (Object.keys(messages).length === 0) {
       const welcomeCard = document.createElement("div");
       welcomeCard.className = "welcome-message-card";
       
@@ -760,7 +768,7 @@ function loadRoomMessages(roomId) {
       h2.textContent = `Welcome to ${currentRoom.name}`;
 
       const p = document.createElement("p");
-      p.textContent = "No messages here yet. Right-click any message for reactions, copy, and options!";
+      p.textContent = "No messages here yet. Right-click any message for reactions, reply, copy, and options!";
 
       welcomeCard.appendChild(icon);
       welcomeCard.appendChild(h2);
@@ -799,7 +807,7 @@ function loadRoomMessages(roomId) {
   });
 }
 
-// Render Single Message in Stream (Clean Hierarchy & FontAwesome Reactions)
+// Render Single Message in Stream (With Reply Quote & Graceful Deleted Message Handling)
 function renderSingleMessage(msgId, msg) {
   const isOutgoing = msg.senderId === currentUser?.uid;
   const item = document.createElement("div");
@@ -833,7 +841,54 @@ function renderSingleMessage(msgId, msg) {
   header.appendChild(author);
   header.appendChild(time);
 
-  // 4. Bubble Container for Text
+  // 4. Reply Quote Box (If message is a reply to another message)
+  if (msg.replyTo) {
+    const replyQuote = document.createElement("div");
+    replyQuote.className = "msg-reply-quote";
+
+    const replyIcon = document.createElement("i");
+    replyIcon.className = "fa-solid fa-reply reply-icon";
+    replyQuote.appendChild(replyIcon);
+
+    const replyContent = document.createElement("div");
+    replyContent.className = "msg-reply-content";
+
+    const replyAuthor = document.createElement("span");
+    replyAuthor.className = "msg-reply-author";
+    replyAuthor.textContent = stripZalgo(msg.replyTo.senderName || "User");
+
+    const replySnippet = document.createElement("span");
+    replySnippet.className = "msg-reply-snippet";
+
+    // Gracefully check if original replied message was deleted from current room snapshot
+    const isOriginalDeleted = !currentRoomMessagesSnapshot || !currentRoomMessagesSnapshot[msg.replyTo.msgId];
+
+    if (isOriginalDeleted) {
+      replySnippet.classList.add("deleted-quote");
+      replySnippet.innerHTML = `<i class="fa-solid fa-trash-can" style="font-size: 0.7rem; margin-right: 4px;"></i> Original message deleted`;
+    } else {
+      replySnippet.textContent = stripZalgo(msg.replyTo.text || "Attachment");
+      replyQuote.style.cursor = "pointer";
+      replyQuote.title = "Click to jump to original message";
+      replyQuote.onclick = () => {
+        const target = document.getElementById(`msg-${msg.replyTo.msgId}`);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+          target.classList.add("highlight-reply");
+          setTimeout(() => target.classList.remove("highlight-reply"), 1500);
+        } else {
+          showToast("Original message was deleted or hidden", 3000, "fa-solid fa-circle-info");
+        }
+      };
+    }
+
+    replyContent.appendChild(replyAuthor);
+    replyContent.appendChild(replySnippet);
+    replyQuote.appendChild(replyContent);
+    body.appendChild(replyQuote);
+  }
+
+  // 5. Bubble Container for Text
   const bubble = document.createElement("div");
   bubble.className = "msg-bubble";
 
@@ -876,7 +931,7 @@ function renderSingleMessage(msgId, msg) {
     body.appendChild(bubble);
   }
 
-  // 5. Media Previews
+  // 6. Media Previews
   if (mediaUrlsToRender.length > 0 || msg.imageUrl) {
     const mediaContainer = document.createElement("div");
     mediaContainer.className = "msg-media-container";
@@ -909,7 +964,7 @@ function renderSingleMessage(msgId, msg) {
     body.appendChild(mediaContainer);
   }
 
-  // 6. Rich Link Preview Card Container
+  // 7. Rich Link Preview Card Container
   if (siteUrlsToPreview.length > 0) {
     const previewContainer = document.createElement("div");
     previewContainer.className = "link-preview-container";
@@ -917,7 +972,7 @@ function renderSingleMessage(msgId, msg) {
     fetchLinkPreview(siteUrlsToPreview[0], previewContainer);
   }
 
-  // 7. Reactions
+  // 8. Reactions
   if (msg.reactions) {
     const reactionCounts = {};
     const userReacted = {};
@@ -978,7 +1033,7 @@ function getReactionIconHtml(key) {
   return map[key] || `<i class="fa-solid fa-thumbs-up"></i>`;
 }
 
-// Right-Click Context Menu Implementation (FontAwesome Icons)
+// Right-Click Context Menu Implementation (Includes Reply, Copy, Reactions & Delete)
 function openContextMenu(e, msgId, msg) {
   dismissContextMenu();
 
@@ -1010,12 +1065,21 @@ function openContextMenu(e, msgId, msg) {
   });
   menu.appendChild(reactionRow);
 
+  // Reply Item
+  const replyItem = document.createElement("div");
+  replyItem.className = "context-menu-item";
+  replyItem.innerHTML = `<i class="fa-solid fa-reply"></i> Reply`;
+  replyItem.onclick = () => window.setReplyTarget(msgId, msg);
+  menu.appendChild(replyItem);
+
+  // Copy Item
   const copyItem = document.createElement("div");
   copyItem.className = "context-menu-item";
   copyItem.innerHTML = `<i class="fa-solid fa-copy"></i> Copy Text`;
   copyItem.onclick = () => window.copyMessageText(msgId);
   menu.appendChild(copyItem);
 
+  // Delete Item (If own message)
   if (isOwnMessage) {
     const deleteItem = document.createElement("div");
     deleteItem.className = "context-menu-item danger";
@@ -1029,7 +1093,7 @@ function openContextMenu(e, msgId, msg) {
   let left = e.clientX;
   let top = e.clientY;
   const menuWidth = menu.offsetWidth || 190;
-  const menuHeight = menu.offsetHeight || 140;
+  const menuHeight = menu.offsetHeight || 160;
 
   if (left + menuWidth > window.innerWidth) left = window.innerWidth - menuWidth - 10;
   if (top + menuHeight > window.innerHeight) top = window.innerHeight - menuHeight - 10;
@@ -1037,6 +1101,30 @@ function openContextMenu(e, msgId, msg) {
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
 }
+
+// Reply Target Helpers
+window.setReplyTarget = function(msgId, msg) {
+  activeReplyTarget = {
+    msgId: msgId,
+    senderName: stripZalgo(msg.senderName).trim() || "User",
+    text: stripZalgo(msg.text || (msg.imageUrl ? "Image attachment" : "Message")).trim()
+  };
+
+  if (elements.replyToSender && elements.replyToText && elements.replyPreviewBar) {
+    elements.replyToSender.textContent = activeReplyTarget.senderName;
+    elements.replyToText.textContent = `"${activeReplyTarget.text}"`;
+    elements.replyPreviewBar.classList.remove("hidden");
+  }
+  elements.messageInput.focus();
+  dismissContextMenu();
+};
+
+window.cancelReply = function() {
+  activeReplyTarget = null;
+  if (elements.replyPreviewBar) {
+    elements.replyPreviewBar.classList.add("hidden");
+  }
+};
 
 window.dismissContextMenu = function() {
   if (activeContextMenu) {
@@ -1090,7 +1178,7 @@ window.toggleReaction = function(msgId, reactionKey) {
   });
 };
 
-// Send Message Logic (Rate Limited & CAPTCHA Protected)
+// Send Message Logic (Supports Replies)
 async function sendMessage(e) {
   if (e) e.preventDefault();
   
@@ -1141,15 +1229,24 @@ async function sendMessage(e) {
     msgData.imageUrl = activeImageAttachment;
   }
 
+  if (activeReplyTarget) {
+    msgData.replyTo = {
+      msgId: activeReplyTarget.msgId,
+      senderName: activeReplyTarget.senderName,
+      text: activeReplyTarget.text
+    };
+  }
+
   userSendTimestamps.push(now);
 
   const newMsgRef = push(ref(db, `messages/${currentRoom.id}`));
   await set(newMsgRef, msgData);
 
-  // Reset form
+  // Reset form & reply state
   elements.messageInput.value = "";
   elements.messageInput.style.height = "auto";
   clearImageAttachment();
+  window.cancelReply();
   stopTyping();
   playSound('send');
 }
@@ -1325,6 +1422,9 @@ function setupEventListeners() {
     }
   });
 
+  // Reply cancel button
+  elements.cancelReplyBtn.addEventListener("click", window.cancelReply);
+
   // Dismiss context menu on click anywhere
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".context-menu")) {
@@ -1333,7 +1433,10 @@ function setupEventListeners() {
   });
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") dismissContextMenu();
+    if (e.key === "Escape") {
+      dismissContextMenu();
+      window.cancelReply();
+    }
   });
 
   // Chat form submit

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   PulseChat Design System & Styling
+   Chapp Design System & Styling
    ========================================================================== */
 
 :root {
@@ -102,6 +102,7 @@ h1, h2, h3, h4, .brand-text h2 {
   justify-content: center;
   color: white;
   box-shadow: 0 4px 12px var(--primary-glow);
+  font-size: 1.2rem;
 }
 
 .brand-text h2 {
@@ -291,7 +292,7 @@ h1, h2, h3, h4, .brand-text h2 {
 .user-name-wrapper {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .user-name {
@@ -303,17 +304,25 @@ h1, h2, h3, h4, .brand-text h2 {
   text-overflow: ellipsis;
 }
 
+/* Edit Nickname Pencil Icon (Fixed White Color) */
 .edit-name-btn {
   background: none;
   border: none;
   cursor: pointer;
   font-size: 0.8rem;
-  opacity: 0.6;
-  transition: opacity 0.2s;
+  color: #ffffff;
+  opacity: 0.8;
+  transition: var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
 }
 
 .edit-name-btn:hover {
   opacity: 1;
+  color: #a5b4fc;
+  transform: scale(1.15);
 }
 
 .user-id-sub {
@@ -484,6 +493,7 @@ h1, h2, h3, h4, .brand-text h2 {
 .welcome-icon {
   font-size: 3rem;
   margin-bottom: 12px;
+  color: var(--primary);
 }
 
 .welcome-message-card h2 {
@@ -505,6 +515,8 @@ h1, h2, h3, h4, .brand-text h2 {
   animation: fadeIn 0.25s ease-out;
   cursor: context-menu;
   position: relative;
+  transition: background 0.3s ease;
+  border-radius: var(--radius-md);
 }
 
 .message-item.outgoing {
@@ -531,7 +543,7 @@ h1, h2, h3, h4, .brand-text h2 {
 .msg-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   max-width: 100%;
 }
@@ -563,6 +575,76 @@ h1, h2, h3, h4, .brand-text h2 {
   font-size: 0.7rem;
   color: var(--text-subtle);
   flex-shrink: 0;
+}
+
+/* Reply Quote Box inside Message Stream */
+.msg-reply-quote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--primary);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  max-width: 100%;
+  overflow: hidden;
+  margin-bottom: 2px;
+  transition: var(--transition-fast);
+}
+
+.outgoing .msg-reply-quote {
+  border-left-color: #a5b4fc;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.msg-reply-quote:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.reply-icon {
+  font-size: 0.72rem;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.outgoing .reply-icon {
+  color: #a5b4fc;
+}
+
+.msg-reply-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.msg-reply-author {
+  font-weight: 600;
+  color: #a5b4fc;
+  white-space: nowrap;
+}
+
+.msg-reply-snippet {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-reply-snippet.deleted-quote {
+  color: var(--text-subtle);
+  font-style: italic;
+}
+
+.highlight-reply {
+  animation: pulse-highlight 1.5s ease-out;
+}
+
+@keyframes pulse-highlight {
+  0% { background: var(--primary-glow); box-shadow: 0 0 20px var(--primary); }
+  100% { background: transparent; box-shadow: none; }
 }
 
 .msg-bubble {
@@ -892,6 +974,59 @@ h1, h2, h3, h4, .brand-text h2 {
 .preview-filename {
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+/* Reply Preview Bar above Input Footer */
+.reply-preview-bar {
+  background: var(--bg-surface-elevated);
+  border-top: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  padding: 8px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reply-preview-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.reply-to-label {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.reply-to-label strong {
+  color: #a5b4fc;
+}
+
+.reply-to-text {
+  color: var(--text-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+}
+
+.cancel-reply-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+}
+
+.cancel-reply-btn:hover {
+  color: var(--text-main);
+  background: var(--bg-glass-card);
 }
 
 /* Chat Footer & Form */

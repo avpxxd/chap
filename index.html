@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chapp - Live Chat</title>
+  <title>Chapp - Live Realtime Chat</title>
   <meta name="description" content="A stunning dark glassmorphic real-time chat application with public channels and private room code sharing.">
   
   <!-- Google Fonts -->
@@ -34,7 +34,7 @@
         </div>
         <div class="brand-text">
           <h2>Chapp</h2>
-          <span class="online-status-pill"><span class="status-dot"></span>Online</span>
+          <span class="online-status-pill"><span class="status-dot"></span> Live Realtime</span>
         </div>
         <button id="closeSidebarBtn" class="mobile-close-btn" aria-label="Close Sidebar"><i class="fa-solid fa-xmark"></i></button>
       </div>
@@ -136,6 +136,15 @@
           <button id="removeAttachmentBtn" class="remove-attachment-btn"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <span class="preview-filename">Image attached ready to send</span>
+      </div>
+
+      <!-- Reply Preview Bar -->
+      <div id="replyPreviewBar" class="reply-preview-bar hidden">
+        <div class="reply-preview-content">
+          <span class="reply-to-label"><i class="fa-solid fa-reply"></i> Replying to <strong id="replyToSender">User</strong>:</span>
+          <span id="replyToText" class="reply-to-text">"Message preview..."</span>
+        </div>
+        <button id="cancelReplyBtn" class="cancel-reply-btn" type="button" title="Cancel Reply"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
       <!-- Message Form Footer -->
