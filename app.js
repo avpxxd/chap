@@ -37,21 +37,21 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 
-// Public Default Channels
+// Public Default Channels with FontAwesome Icons
 const PUBLIC_ROOMS = [
-  { id: "general", name: "#general", desc: "General discussion channel for everyone", icon: "💬" },
-  { id: "tech-lounge", name: "#tech-lounge", desc: "Tech news, coding tips, and gadget talk", icon: "💻" },
-  { id: "gaming", name: "#gaming", desc: "Gamers hangout, squad up, and clips", icon: "🎮" },
-  { id: "music-vibes", name: "#music-vibes", desc: "Share music recs and playlist vibes", icon: "🎵" },
-  { id: "random", name: "#random", desc: "Memes, random thoughts, and fun", icon: "🎲" }
+  { id: "general", name: "#general", desc: "General discussion channel for everyone", iconClass: "fa-solid fa-hashtag" },
+  { id: "tech-lounge", name: "#tech-lounge", desc: "Tech news, coding tips, and gadget talk", iconClass: "fa-solid fa-laptop-code" },
+  { id: "gaming", name: "#gaming", desc: "Gamers hangout, squad up, and clips", iconClass: "fa-solid fa-gamepad" },
+  { id: "music-vibes", name: "#music-vibes", desc: "Share music recs and playlist vibes", iconClass: "fa-solid fa-music" },
+  { id: "random", name: "#random", desc: "Memes, random thoughts, and fun", iconClass: "fa-solid fa-dice" }
 ];
 
 // Application State
 let currentUser = null;
-let currentNickname = localStorage.getItem("pulsechat_nickname") || "";
+let currentNickname = localStorage.getItem("chapp_nickname") || localStorage.getItem("pulsechat_nickname") || "";
 let currentRoom = PUBLIC_ROOMS[0];
-let privateRooms = JSON.parse(localStorage.getItem("pulsechat_private_rooms") || "[]");
-let soundMuted = localStorage.getItem("pulsechat_sound_muted") === "true";
+let privateRooms = JSON.parse(localStorage.getItem("chapp_private_rooms") || localStorage.getItem("pulsechat_private_rooms") || "[]");
+let soundMuted = (localStorage.getItem("chapp_sound_muted") || localStorage.getItem("pulsechat_sound_muted")) === "true";
 let activeImageAttachment = null;
 let activeRoomMessageUnsubscribe = null;
 let currentTypingListener = null;
@@ -67,7 +67,7 @@ const linkMetadataCache = {};
 let userSendTimestamps = [];
 const RATE_LIMIT_COUNT = 10;
 const RATE_LIMIT_WINDOW_MS = 4000;
-let isCaptchaVerified = sessionStorage.getItem("pulsechat_captcha_verified") === "true";
+let isCaptchaVerified = (sessionStorage.getItem("chapp_captcha_verified") || sessionStorage.getItem("pulsechat_captcha_verified")) === "true";
 let turnstileWidgetId = null;
 
 // Helper: Validate Database Keys to Prevent Path Traversal & Global Data Deletion Wipes
@@ -215,20 +215,20 @@ function renderCaptchaWidget() {
   if (window.turnstile) {
     try {
       turnstileWidgetId = window.turnstile.render("#turnstileWidget", {
-        sitekey: "1x00000000000000000000AA", // Cloudflare Turnstile public testing key (Always passes for real humans)
+        sitekey: "1x00000000000000000000AA",
         theme: "dark",
         callback: function(token) {
           isCaptchaVerified = true;
-          sessionStorage.setItem("pulsechat_captcha_verified", "true");
-          showToast("Human verification successful!");
+          sessionStorage.setItem("chapp_captcha_verified", "true");
+          showToast("Human verification successful!", 3000, "fa-solid fa-shield-cat");
           const verifyBtn = document.getElementById("verifyCaptchaBtn");
           if (verifyBtn) {
             verifyBtn.disabled = false;
-            verifyBtn.textContent = "Enter PulseChat 🚀";
+            verifyBtn.innerHTML = `Enter Chapp <i class="fa-solid fa-rocket"></i>`;
           }
         },
         "error-callback": function() {
-          showToast("Verification error. Please retry.");
+          showToast("Verification error. Please retry.", 3000, "fa-solid fa-circle-exclamation");
         }
       });
     } catch (e) {
@@ -242,7 +242,7 @@ function renderCaptchaWidget() {
 
 function promptCaptcha() {
   isCaptchaVerified = false;
-  sessionStorage.removeItem("pulsechat_captcha_verified");
+  sessionStorage.removeItem("chapp_captcha_verified");
   const verifyBtn = document.getElementById("verifyCaptchaBtn");
   if (verifyBtn) {
     verifyBtn.disabled = true;
@@ -385,13 +385,13 @@ function generateRandomCode() {
   return result;
 }
 
-// Show Toast Notification (Zalgo & XSS Protected)
-function showToast(message, duration = 3000) {
+// Show Toast Notification with FontAwesome Icons
+function showToast(message, duration = 3000, iconClass = "fa-solid fa-circle-info") {
   const toast = document.createElement("div");
   toast.className = "toast";
   
-  const icon = document.createElement("span");
-  icon.textContent = "✨";
+  const icon = document.createElement("i");
+  icon.className = iconClass;
   
   const textSpan = document.createElement("span");
   textSpan.textContent = stripZalgo(message);
@@ -434,7 +434,7 @@ async function initApp() {
     
     if (!currentNickname || !stripZalgo(currentNickname).trim()) {
       currentNickname = "Guest-" + currentUser.uid.substring(0, 4);
-      localStorage.setItem("pulsechat_nickname", currentNickname);
+      localStorage.setItem("chapp_nickname", currentNickname);
     }
     
     updateUserUI();
@@ -451,7 +451,7 @@ async function initApp() {
     }
   } catch (error) {
     console.error("Firebase Auth Error:", error);
-    showToast("Authentication error. Refreshing...");
+    showToast("Authentication error. Refreshing...", 3000, "fa-solid fa-triangle-exclamation");
   }
 }
 
@@ -483,7 +483,7 @@ function subscribeRoomBackground(room) {
       renderPublicRooms();
       renderPrivateRooms();
       playSound('receive');
-      showToast(`💬 ${room.name}: ${msg.senderName || 'Someone'}: "${msg.text || 'Image attachment'}"`);
+      showToast(`${room.name}: ${msg.senderName || 'Someone'}: "${msg.text || 'Image attachment'}"`, 3000, "fa-solid fa-comment-dots");
     }
   });
 
@@ -580,7 +580,7 @@ function updateUserUI() {
   elements.currentUserIdSub.textContent = `ID: ${currentUser.uid.substring(0, 8)}`;
 }
 
-// Render Public Channels List (DOM Nodes - 100% XSS Immune)
+// Render Public Channels List (FontAwesome Icons)
 function renderPublicRooms() {
   elements.publicRoomsList.innerHTML = "";
   PUBLIC_ROOMS.forEach(room => {
@@ -593,8 +593,8 @@ function renderPublicRooms() {
     const nameDiv = document.createElement("div");
     nameDiv.className = "room-item-name";
 
-    const iconSpan = document.createElement("span");
-    iconSpan.textContent = room.icon;
+    const iconSpan = document.createElement("i");
+    iconSpan.className = room.iconClass;
 
     const titleSpan = document.createElement("span");
     titleSpan.textContent = room.name;
@@ -614,7 +614,7 @@ function renderPublicRooms() {
   });
 }
 
-// Render Private Rooms List (DOM Nodes - 100% XSS Immune)
+// Render Private Rooms List (FontAwesome Icons)
 function renderPrivateRooms() {
   elements.privateRoomsList.innerHTML = "";
   if (privateRooms.length === 0) {
@@ -635,8 +635,8 @@ function renderPrivateRooms() {
     const nameDiv = document.createElement("div");
     nameDiv.className = "room-item-name";
 
-    const iconSpan = document.createElement("span");
-    iconSpan.textContent = "🔒";
+    const iconSpan = document.createElement("i");
+    iconSpan.className = "fa-solid fa-lock";
 
     const titleSpan = document.createElement("span");
     titleSpan.textContent = room.name;
@@ -657,7 +657,7 @@ function renderPrivateRooms() {
 
     const delBtn = document.createElement("button");
     delBtn.className = "delete-room-btn";
-    delBtn.textContent = "🗑️";
+    delBtn.innerHTML = `<i class="fa-solid fa-trash-can"></i>`;
     delBtn.title = "Delete Private Room";
     delBtn.onclick = (e) => window.deletePrivateRoom(room.id, e);
     actionsDiv.appendChild(delBtn);
@@ -667,7 +667,7 @@ function renderPrivateRooms() {
   });
 }
 
-// Delete Private Room Function (Strict Path Guard Protection)
+// Delete Private Room Function
 window.deletePrivateRoom = async function(roomId, event) {
   if (event) event.stopPropagation();
 
@@ -677,7 +677,7 @@ window.deletePrivateRoom = async function(roomId, event) {
   }
 
   if (PUBLIC_ROOMS.some(p => p.id === roomId)) {
-    showToast("Public channels cannot be deleted!");
+    showToast("Public channels cannot be deleted!", 3000, "fa-solid fa-ban");
     return;
   }
 
@@ -686,7 +686,7 @@ window.deletePrivateRoom = async function(roomId, event) {
   }
 
   privateRooms = privateRooms.filter(r => r.id !== roomId);
-  localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
+  localStorage.setItem("chapp_private_rooms", JSON.stringify(privateRooms));
 
   try {
     await remove(ref(db, `private_rooms/${roomId}`));
@@ -695,7 +695,7 @@ window.deletePrivateRoom = async function(roomId, event) {
     console.log("Room DB remove info:", err);
   }
 
-  showToast(`Deleted private room ${roomId}`);
+  showToast(`Deleted private room ${roomId}`, 3000, "fa-solid fa-trash-can");
   playSound('delete');
 
   if (currentRoom.id === roomId) {
@@ -754,7 +754,7 @@ function loadRoomMessages(roomId) {
       
       const icon = document.createElement("div");
       icon.className = "welcome-icon";
-      icon.textContent = currentRoom.icon || '💬';
+      icon.innerHTML = `<i class="${currentRoom.iconClass || 'fa-solid fa-comments'}"></i>`;
 
       const h2 = document.createElement("h2");
       h2.textContent = `Welcome to ${currentRoom.name}`;
@@ -799,7 +799,7 @@ function loadRoomMessages(roomId) {
   });
 }
 
-// Render Single Message in Stream (Clean Hierarchy, High-Contrast Text & Unclipped Cards)
+// Render Single Message in Stream (Clean Hierarchy & FontAwesome Reactions)
 function renderSingleMessage(msgId, msg) {
   const isOutgoing = msg.senderId === currentUser?.uid;
   const item = document.createElement("div");
@@ -850,7 +850,6 @@ function renderSingleMessage(msgId, msg) {
       bubble.appendChild(document.createTextNode(rawText.substring(lastIndex, match.index)));
     }
     
-    // Hyperlinked URL text inside bubble
     const a = document.createElement("a");
     a.href = url;
     a.target = "_blank";
@@ -873,12 +872,11 @@ function renderSingleMessage(msgId, msg) {
 
   body.appendChild(header);
 
-  // Only append bubble if text exists
   if (rawText) {
     body.appendChild(bubble);
   }
 
-  // 5. Media Previews (GIFs / Images in dedicated media block below bubble)
+  // 5. Media Previews
   if (mediaUrlsToRender.length > 0 || msg.imageUrl) {
     const mediaContainer = document.createElement("div");
     mediaContainer.className = "msg-media-container";
@@ -911,7 +909,7 @@ function renderSingleMessage(msgId, msg) {
     body.appendChild(mediaContainer);
   }
 
-  // 6. Rich Link Preview Card Container (Below bubble)
+  // 6. Rich Link Preview Card Container
   if (siteUrlsToPreview.length > 0) {
     const previewContainer = document.createElement("div");
     previewContainer.className = "link-preview-container";
@@ -923,23 +921,31 @@ function renderSingleMessage(msgId, msg) {
   if (msg.reactions) {
     const reactionCounts = {};
     const userReacted = {};
-    Object.entries(msg.reactions).forEach(([emoji, userMap]) => {
-      if (!isValidKey(emoji)) return;
+    Object.entries(msg.reactions).forEach(([emojiKey, userMap]) => {
+      if (!isValidKey(emojiKey)) return;
       const users = Object.keys(userMap);
-      reactionCounts[emoji] = users.length;
+      reactionCounts[emojiKey] = users.length;
       if (users.includes(currentUser?.uid)) {
-        userReacted[emoji] = true;
+        userReacted[emojiKey] = true;
       }
     });
 
     const reactionsContainer = document.createElement("div");
     reactionsContainer.className = "msg-reactions";
 
-    Object.entries(reactionCounts).forEach(([emoji, count]) => {
+    Object.entries(reactionCounts).forEach(([emojiKey, count]) => {
       const chip = document.createElement("span");
-      chip.className = `reaction-chip ${userReacted[emoji] ? 'user-reacted' : ''}`;
-      chip.textContent = `${emoji} ${count}`;
-      chip.onclick = () => window.toggleReaction(msgId, emoji);
+      chip.className = `reaction-chip ${userReacted[emojiKey] ? 'user-reacted' : ''}`;
+      
+      const iconSpan = document.createElement("span");
+      iconSpan.innerHTML = getReactionIconHtml(emojiKey);
+
+      const countSpan = document.createElement("span");
+      countSpan.textContent = ` ${count}`;
+
+      chip.appendChild(iconSpan);
+      chip.appendChild(countSpan);
+      chip.onclick = () => window.toggleReaction(msgId, emojiKey);
       reactionsContainer.appendChild(chip);
     });
 
@@ -959,7 +965,20 @@ function renderSingleMessage(msgId, msg) {
   elements.messagesContainer.appendChild(item);
 }
 
-// Right-Click Context Menu Implementation (DOM Nodes)
+// Helper to map reaction keys to FontAwesome Icon HTML
+function getReactionIconHtml(key) {
+  const map = {
+    "thumbsup": '<i class="fa-solid fa-thumbs-up"></i>',
+    "heart": '<i class="fa-solid fa-heart" style="color: #ef4444;"></i>',
+    "laugh": '<i class="fa-solid fa-face-laugh-squint" style="color: #f59e0b;"></i>',
+    "fire": '<i class="fa-solid fa-fire" style="color: #f97316;"></i>',
+    "party": '<i class="fa-solid fa-champagne-glasses" style="color: #a855f7;"></i>',
+    "rocket": '<i class="fa-solid fa-rocket" style="color: #06b6d4;"></i>'
+  };
+  return map[key] || `<i class="fa-solid fa-thumbs-up"></i>`;
+}
+
+// Right-Click Context Menu Implementation (FontAwesome Icons)
 function openContextMenu(e, msgId, msg) {
   dismissContextMenu();
 
@@ -970,13 +989,21 @@ function openContextMenu(e, msgId, msg) {
 
   const reactionRow = document.createElement("div");
   reactionRow.className = "context-reaction-row";
-  const emojis = ["👍", "❤️", "😂", "🔥", "🎉", "🚀"];
   
-  emojis.forEach(emoji => {
+  const reactionKeys = [
+    { key: "thumbsup", icon: '<i class="fa-solid fa-thumbs-up"></i>' },
+    { key: "heart", icon: '<i class="fa-solid fa-heart" style="color: #ef4444;"></i>' },
+    { key: "laugh", icon: '<i class="fa-solid fa-face-laugh-squint" style="color: #f59e0b;"></i>' },
+    { key: "fire", icon: '<i class="fa-solid fa-fire" style="color: #f97316;"></i>' },
+    { key: "party", icon: '<i class="fa-solid fa-champagne-glasses" style="color: #a855f7;"></i>' },
+    { key: "rocket", icon: '<i class="fa-solid fa-rocket" style="color: #06b6d4;"></i>' }
+  ];
+  
+  reactionKeys.forEach(item => {
     const span = document.createElement("span");
-    span.textContent = emoji;
+    span.innerHTML = item.icon;
     span.onclick = () => {
-      window.toggleReaction(msgId, emoji);
+      window.toggleReaction(msgId, item.key);
       window.dismissContextMenu();
     };
     reactionRow.appendChild(span);
@@ -985,14 +1012,14 @@ function openContextMenu(e, msgId, msg) {
 
   const copyItem = document.createElement("div");
   copyItem.className = "context-menu-item";
-  copyItem.innerHTML = `<span>📋</span> Copy Text`;
+  copyItem.innerHTML = `<i class="fa-solid fa-copy"></i> Copy Text`;
   copyItem.onclick = () => window.copyMessageText(msgId);
   menu.appendChild(copyItem);
 
   if (isOwnMessage) {
     const deleteItem = document.createElement("div");
     deleteItem.className = "context-menu-item danger";
-    deleteItem.innerHTML = `<span>🗑️</span> Delete Message`;
+    deleteItem.innerHTML = `<i class="fa-solid fa-trash-can"></i> Delete Message`;
     deleteItem.onclick = () => window.deleteMessage(msgId);
     menu.appendChild(deleteItem);
   }
@@ -1025,7 +1052,7 @@ window.copyMessageText = function(msgId) {
     if (bubble) {
       const text = bubble.innerText.trim();
       navigator.clipboard.writeText(text);
-      showToast("Message copied to clipboard!");
+      showToast("Message copied to clipboard!", 3000, "fa-solid fa-copy");
     }
   }
   dismissContextMenu();
@@ -1041,18 +1068,18 @@ window.deleteMessage = async function(msgId) {
   
   try {
     await remove(ref(db, `messages/${currentRoom.id}/${msgId}`));
-    showToast("Message deleted");
+    showToast("Message deleted", 3000, "fa-solid fa-trash-can");
     playSound('delete');
   } catch (err) {
     console.error("Error deleting message:", err);
-    showToast("Could not delete message");
+    showToast("Could not delete message", 3000, "fa-solid fa-circle-exclamation");
   }
   dismissContextMenu();
 };
 
-window.toggleReaction = function(msgId, emoji) {
-  if (!currentUser || !isValidKey(currentRoom?.id) || !isValidKey(msgId) || !isValidKey(emoji) || !isValidKey(currentUser?.uid)) return;
-  const reactionRef = ref(db, `messages/${currentRoom.id}/${msgId}/reactions/${emoji}/${currentUser.uid}`);
+window.toggleReaction = function(msgId, reactionKey) {
+  if (!currentUser || !isValidKey(currentRoom?.id) || !isValidKey(msgId) || !isValidKey(reactionKey) || !isValidKey(currentUser?.uid)) return;
+  const reactionRef = ref(db, `messages/${currentRoom.id}/${msgId}/reactions/${reactionKey}/${currentUser.uid}`);
   
   get(reactionRef).then(snapshot => {
     if (snapshot.exists()) {
@@ -1067,7 +1094,6 @@ window.toggleReaction = function(msgId, emoji) {
 async function sendMessage(e) {
   if (e) e.preventDefault();
   
-  // Guard: Must pass CAPTCHA Human Verification
   if (!isCaptchaVerified) {
     promptCaptcha();
     return;
@@ -1075,7 +1101,7 @@ async function sendMessage(e) {
 
   const cleanNick = stripZalgo(currentNickname).trim();
   if (!currentUser || !cleanNick) {
-    showToast("Please choose a nickname before sending messages!");
+    showToast("Please choose a nickname before sending messages!", 3000, "fa-solid fa-user-pen");
     elements.nicknameInput.value = "";
     elements.editNameModal.classList.remove("hidden");
     return;
@@ -1088,9 +1114,8 @@ async function sendMessage(e) {
     const oldestInWindow = userSendTimestamps[0];
     const waitMs = RATE_LIMIT_WINDOW_MS - (now - oldestInWindow);
     const waitSec = (waitMs / 1000).toFixed(1);
-    showToast(`⚠️ Rate limit: Max 10 msgs / 4 sec. Please wait ${waitSec}s.`);
+    showToast(`⚠️ Rate limit: Max 10 msgs / 4 sec. Please wait ${waitSec}s.`, 3000, "fa-solid fa-gauge-high");
     playSound('delete');
-    // Prompt CAPTCHA re-verify if spam continues
     if (userSendTimestamps.length >= RATE_LIMIT_COUNT + 2) {
       promptCaptcha();
     }
@@ -1101,7 +1126,7 @@ async function sendMessage(e) {
   if (!text && !activeImageAttachment) return;
 
   if (!isValidKey(currentRoom?.id)) {
-    showToast("Invalid chat room.");
+    showToast("Invalid chat room.", 3000, "fa-solid fa-triangle-exclamation");
     return;
   }
 
@@ -1135,7 +1160,7 @@ function handleImageSelect(e) {
   if (!file) return;
 
   if (file.size > 2 * 1024 * 1024) {
-    showToast("Please choose an image under 2MB.");
+    showToast("Please choose an image under 2MB.", 3000, "fa-solid fa-file-image");
     return;
   }
 
@@ -1202,7 +1227,7 @@ async function handleCreateRoom() {
   let code = elements.newRoomCode.value.trim().toUpperCase();
 
   if (!rawName) {
-    showToast("Please enter a room name.");
+    showToast("Please enter a room name.", 3000, "fa-solid fa-circle-exclamation");
     return;
   }
 
@@ -1211,7 +1236,7 @@ async function handleCreateRoom() {
   }
 
   if (!isValidKey(code)) {
-    showToast("Invalid room code format.");
+    showToast("Invalid room code format.", 3000, "fa-solid fa-ban");
     return;
   }
 
@@ -1228,7 +1253,7 @@ async function handleCreateRoom() {
 
   if (!privateRooms.some(r => r.id === code)) {
     privateRooms.push(roomObj);
-    localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
+    localStorage.setItem("chapp_private_rooms", JSON.stringify(privateRooms));
   }
 
   elements.createRoomModal.classList.add("hidden");
@@ -1236,7 +1261,7 @@ async function handleCreateRoom() {
   elements.newRoomCode.value = "";
 
   subscribeRoomBackground(roomObj);
-  showToast(`Created private room: ${code}`);
+  showToast(`Created private room: ${code}`, 3000, "fa-solid fa-square-plus");
   switchRoom(roomObj);
 }
 
@@ -1244,7 +1269,7 @@ async function handleCreateRoom() {
 async function joinRoomByCode(codeToJoin) {
   const code = (codeToJoin || elements.joinRoomCodeInput.value).trim().toUpperCase();
   if (!code || !isValidKey(code)) {
-    showToast("Please enter a valid room code.");
+    showToast("Please enter a valid room code.", 3000, "fa-solid fa-key");
     return;
   }
 
@@ -1264,18 +1289,18 @@ async function joinRoomByCode(codeToJoin) {
 
     if (!privateRooms.some(r => r.id === code)) {
       privateRooms.push(roomObj);
-      localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
+      localStorage.setItem("chapp_private_rooms", JSON.stringify(privateRooms));
     }
 
     elements.joinRoomModal.classList.add("hidden");
     elements.joinRoomCodeInput.value = "";
     
     subscribeRoomBackground(roomObj);
-    showToast(`Joined room: ${roomObj.name}`);
+    showToast(`Joined room: ${roomObj.name}`, 3000, "fa-solid fa-door-open");
     switchRoom(roomObj);
   } catch (err) {
     console.error("Error joining room code:", err);
-    showToast("Could not find room code.");
+    showToast("Could not find room code.", 3000, "fa-solid fa-triangle-exclamation");
   }
 }
 
@@ -1296,7 +1321,7 @@ function setupEventListeners() {
   elements.verifyCaptchaBtn.addEventListener("click", () => {
     if (isCaptchaVerified) {
       elements.captchaModal.classList.add("hidden");
-      showToast("Access Granted! Welcome to PulseChat 🚀");
+      showToast("Access Granted! Welcome to Chapp", 3000, "fa-solid fa-rocket");
     }
   });
 
@@ -1335,9 +1360,9 @@ function setupEventListeners() {
   // Audio Toggle
   elements.audioToggleBtn.addEventListener("click", () => {
     soundMuted = !soundMuted;
-    localStorage.setItem("pulsechat_sound_muted", soundMuted);
+    localStorage.setItem("chapp_sound_muted", soundMuted);
     updateSoundUI();
-    showToast(soundMuted ? "Sound muted" : "Sound enabled");
+    showToast(soundMuted ? "Sound muted" : "Sound enabled", 3000, soundMuted ? "fa-solid fa-volume-xmark" : "fa-solid fa-volume-high");
   });
 
   // Create Room Modal
@@ -1363,31 +1388,31 @@ function setupEventListeners() {
   elements.saveNicknameBtn.addEventListener("click", () => {
     const newName = stripZalgo(elements.nicknameInput.value).trim();
     if (!newName) {
-      showToast("Nickname cannot be empty!");
+      showToast("Nickname cannot be empty!", 3000, "fa-solid fa-circle-exclamation");
       return;
     }
     currentNickname = newName;
-    localStorage.setItem("pulsechat_nickname", currentNickname);
+    localStorage.setItem("chapp_nickname", currentNickname);
     updateUserUI();
     if (currentUser && isValidKey(currentUser.uid)) {
       set(ref(db, `status/${currentUser.uid}/name`), currentNickname);
     }
     elements.editNameModal.classList.add("hidden");
-    showToast("Nickname updated!");
+    showToast("Nickname updated!", 3000, "fa-solid fa-circle-check");
   });
 
   // Share Buttons & Room Copy
   elements.copyRoomCodeBtn.addEventListener("click", () => {
     const code = currentRoom.code || currentRoom.id;
     navigator.clipboard.writeText(code);
-    showToast(`Copied room code: ${code}`);
+    showToast(`Copied room code: ${code}`, 3000, "fa-solid fa-copy");
   });
 
   elements.shareRoomBtn.addEventListener("click", () => {
     const code = currentRoom.code || currentRoom.id;
     const shareUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(code)}`;
     navigator.clipboard.writeText(shareUrl);
-    showToast("Shareable room link copied to clipboard!");
+    showToast("Shareable room link copied to clipboard!", 3000, "fa-solid fa-share-nodes");
   });
 
   // Search Filter Events
