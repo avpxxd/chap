@@ -62,6 +62,22 @@ let unreadCounts = {};
 let backgroundRoomListeners = {};
 let activeContextMenu = null;
 
+// Helper: Validate Database Keys to Prevent Path Traversal & Global Data Deletion Wipes
+function isValidKey(key) {
+  if (key === null || key === undefined) return false;
+  const str = String(key).trim();
+  if (!str) return false;
+  // Disallow path separators, wildcards, and traversal sequences: /, ., #, $, [, ], ..
+  if (/[/.\#$\[\]]/.test(str) || str === '..' || str === '.') return false;
+  return true;
+}
+
+// Zalgo Glitch Character Sanitizer Utility
+function stripZalgo(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]/g, '');
+}
+
 // Sound Synthesizer via Web Audio API
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -182,12 +198,6 @@ const elements = {
   membersDrawer: document.getElementById("membersDrawer")
 };
 
-// Zalgo Glitch Character Sanitizer Utility
-function stripZalgo(str) {
-  if (str === null || str === undefined) return '';
-  return String(str).replace(/[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]/g, '');
-}
-
 // Generate Random 6-char Room Code
 function generateRandomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -198,7 +208,7 @@ function generateRandomCode() {
   return result;
 }
 
-// Show Toast Notification (Safe against XSS by using textContent nodes)
+// Show Toast Notification (Zalgo & XSS Protected)
 function showToast(message, duration = 3000) {
   const toast = document.createElement("div");
   toast.className = "toast";
@@ -240,7 +250,7 @@ async function initApp() {
     const userCredential = await signInAnonymously(auth);
     currentUser = userCredential.user;
     
-    if (!currentNickname) {
+    if (!currentNickname || !stripZalgo(currentNickname).trim()) {
       currentNickname = "Guest-" + currentUser.uid.substring(0, 4);
       localStorage.setItem("pulsechat_nickname", currentNickname);
     }
@@ -252,7 +262,7 @@ async function initApp() {
     // Check URL parameters for private room code
     const urlParams = new URLSearchParams(window.location.search);
     const roomParam = urlParams.get("room");
-    if (roomParam) {
+    if (roomParam && isValidKey(roomParam)) {
       joinRoomByCode(roomParam.trim().toUpperCase());
     } else {
       switchRoom(PUBLIC_ROOMS[0]);
@@ -270,7 +280,7 @@ function subscribeAllBackgroundRoomNotifications() {
 }
 
 function subscribeRoomBackground(room) {
-  if (backgroundRoomListeners[room.id]) return;
+  if (!isValidKey(room.id) || backgroundRoomListeners[room.id]) return;
 
   const messagesRef = ref(db, `messages/${room.id}`);
   let isInitialSync = true;
@@ -300,12 +310,12 @@ function subscribeRoomBackground(room) {
 
 // Setup User Online Presence with RTDB
 function setupPresence() {
-  if (!currentUser) return;
+  if (!currentUser || !isValidKey(currentUser.uid)) return;
   const userStatusRef = ref(db, `status/${currentUser.uid}`);
   const connectedRef = ref(db, ".info/connected");
 
   const myStatus = {
-    name: currentNickname,
+    name: stripZalgo(currentNickname).trim() || "Anonymous",
     uid: currentUser.uid,
     state: "online",
     roomId: currentRoom.id,
@@ -316,7 +326,7 @@ function setupPresence() {
     if (snapshot.val() === false) return;
 
     onDisconnect(userStatusRef).set({
-      name: currentNickname,
+      name: stripZalgo(currentNickname).trim() || "Anonymous",
       uid: currentUser.uid,
       state: "offline",
       roomId: currentRoom.id,
@@ -328,12 +338,13 @@ function setupPresence() {
 }
 
 function updatePresenceRoom(roomId) {
-  if (!currentUser) return;
+  if (!currentUser || !isValidKey(currentUser.uid) || !isValidKey(roomId)) return;
   set(ref(db, `status/${currentUser.uid}/roomId`), roomId);
 }
 
 // Listen to Active Members in Current Room (DOM Nodes - 100% XSS Immune)
 function listenToRoomMembers(roomId) {
+  if (!isValidKey(roomId)) return;
   if (activePresenceListener) activePresenceListener();
   
   const statusRef = ref(db, "status");
@@ -348,9 +359,8 @@ function listenToRoomMembers(roomId) {
         const item = document.createElement("div");
         item.className = "member-item";
         
-        const rawName = user.name || "Anonymous User";
-        const cleanName = stripZalgo(rawName);
-        const initial = (cleanName.charAt(0) || "G").toUpperCase();
+        const rawName = stripZalgo(user.name).trim() || "Anonymous User";
+        const initial = (rawName.charAt(0) || "G").toUpperCase();
 
         const avatarWrapper = document.createElement("div");
         avatarWrapper.className = "member-avatar-wrapper";
@@ -367,7 +377,7 @@ function listenToRoomMembers(roomId) {
 
         const nameSpan = document.createElement("span");
         nameSpan.className = "member-name";
-        nameSpan.textContent = cleanName;
+        nameSpan.textContent = rawName;
 
         item.appendChild(avatarWrapper);
         item.appendChild(nameSpan);
@@ -382,7 +392,7 @@ function listenToRoomMembers(roomId) {
 // Update User UI (DOM Nodes - 100% XSS Immune)
 function updateUserUI() {
   if (!currentUser) return;
-  const cleanNick = stripZalgo(currentNickname);
+  const cleanNick = stripZalgo(currentNickname).trim() || "Guest";
   elements.currentUserName.textContent = cleanNick;
   elements.currentUserAvatar.textContent = (cleanNick.charAt(0) || "G").toUpperCase();
   elements.currentUserIdSub.textContent = `ID: ${currentUser.uid.substring(0, 8)}`;
@@ -475,10 +485,22 @@ function renderPrivateRooms() {
   });
 }
 
-// Delete Private Room Function
+// Delete Private Room Function (Strict Path Guard Protection)
 window.deletePrivateRoom = async function(roomId, event) {
   if (event) event.stopPropagation();
-  
+
+  // Guard: Protect against Path Traversal & Global Database Deletion Wipes
+  if (!isValidKey(roomId)) {
+    console.error("Invalid room ID format for deletion:", roomId);
+    return;
+  }
+
+  // Guard: Prevent deleting built-in public rooms
+  if (PUBLIC_ROOMS.some(p => p.id === roomId)) {
+    showToast("Public channels cannot be deleted!");
+    return;
+  }
+
   if (!confirm(`Are you sure you want to delete and leave room ${roomId}?`)) {
     return;
   }
@@ -487,6 +509,7 @@ window.deletePrivateRoom = async function(roomId, event) {
   localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
 
   try {
+    // Only delete targeted room node keys
     await remove(ref(db, `private_rooms/${roomId}`));
     await remove(ref(db, `messages/${roomId}`));
   } catch (err) {
@@ -505,6 +528,7 @@ window.deletePrivateRoom = async function(roomId, event) {
 
 // Switch Active Chat Room
 function switchRoom(room) {
+  if (!room || !isValidKey(room.id)) return;
   currentRoom = room;
   unreadCounts[room.id] = 0;
   renderPublicRooms();
@@ -533,6 +557,7 @@ function switchRoom(room) {
 
 // Load Messages for Active Room
 function loadRoomMessages(roomId) {
+  if (!isValidKey(roomId)) return;
   if (activeRoomMessageUnsubscribe) activeRoomMessageUnsubscribe();
   elements.messagesContainer.innerHTML = "";
 
@@ -567,9 +592,14 @@ function loadRoomMessages(roomId) {
 
     let hasMatchedSearch = false;
     Object.entries(messages).forEach(([msgId, msg]) => {
+      // Filter out messages from blank/empty users or invalid message objects
+      if (!msg || typeof msg !== 'object') return;
+      const sender = stripZalgo(msg.senderName).trim();
+      if (!sender) return; // Block empty user messages
+
       if (searchFilterQuery) {
         const text = (msg.text || "").toLowerCase();
-        const author = (msg.senderName || "").toLowerCase();
+        const author = sender.toLowerCase();
         if (!text.includes(searchFilterQuery) && !author.includes(searchFilterQuery)) {
           return;
         }
@@ -599,9 +629,8 @@ function renderSingleMessage(msgId, msg) {
   item.id = `msg-${msgId}`;
 
   // 1. Avatar (textContent DOM node - safe against unclosed tag parsing)
-  const rawSender = msg.senderName || "User";
-  const cleanSender = stripZalgo(rawSender);
-  const initial = (cleanSender.charAt(0) || "U").toUpperCase();
+  const rawSender = stripZalgo(msg.senderName).trim() || "User";
+  const initial = (rawSender.charAt(0) || "U").toUpperCase();
   
   const avatar = document.createElement("div");
   avatar.className = "msg-avatar";
@@ -617,7 +646,7 @@ function renderSingleMessage(msgId, msg) {
 
   const author = document.createElement("span");
   author.className = "msg-author";
-  author.textContent = cleanSender; // 100% plain text node! Zero XSS!
+  author.textContent = rawSender; // 100% plain text node! Zero XSS!
 
   const time = document.createElement("span");
   time.className = "msg-time";
@@ -673,6 +702,7 @@ function renderSingleMessage(msgId, msg) {
     const reactionCounts = {};
     const userReacted = {};
     Object.entries(msg.reactions).forEach(([emoji, userMap]) => {
+      if (!isValidKey(emoji)) return;
       const users = Object.keys(userMap);
       reactionCounts[emoji] = users.length;
       if (users.includes(currentUser?.uid)) {
@@ -779,9 +809,13 @@ window.copyMessageText = function(msgId) {
   dismissContextMenu();
 };
 
-// Delete Message Function
+// Delete Message Function (Strict Guarded Removal)
 window.deleteMessage = async function(msgId) {
   if (!currentUser) return;
+  if (!isValidKey(currentRoom?.id) || !isValidKey(msgId)) {
+    console.error("Invalid path parameters for message deletion.");
+    return;
+  }
   
   try {
     await remove(ref(db, `messages/${currentRoom.id}/${msgId}`));
@@ -795,28 +829,41 @@ window.deleteMessage = async function(msgId) {
 };
 
 window.toggleReaction = function(msgId, emoji) {
-  if (!currentUser) return;
+  if (!currentUser || !isValidKey(currentRoom?.id) || !isValidKey(msgId) || !isValidKey(emoji) || !isValidKey(currentUser?.uid)) return;
   const reactionRef = ref(db, `messages/${currentRoom.id}/${msgId}/reactions/${emoji}/${currentUser.uid}`);
   
   get(reactionRef).then(snapshot => {
     if (snapshot.exists()) {
       remove(reactionRef);
     } else {
-      set(reactionRef, currentNickname);
+      set(reactionRef, stripZalgo(currentNickname).trim() || "User");
     }
   });
 };
 
-// Send Message Logic
+// Send Message Logic (Strict Empty User & Empty Message Guards)
 async function sendMessage(e) {
   if (e) e.preventDefault();
-  const text = elements.messageInput.value.trim();
+  
+  const cleanNick = stripZalgo(currentNickname).trim();
+  if (!currentUser || !cleanNick) {
+    showToast("Please choose a nickname before sending messages!");
+    elements.nicknameInput.value = "";
+    elements.editNameModal.classList.remove("hidden");
+    return;
+  }
+
+  const text = stripZalgo(elements.messageInput.value).trim();
   if (!text && !activeImageAttachment) return;
-  if (!currentUser) return;
+
+  if (!isValidKey(currentRoom?.id)) {
+    showToast("Invalid chat room.");
+    return;
+  }
 
   const msgData = {
     senderId: currentUser.uid,
-    senderName: currentNickname,
+    senderName: cleanNick,
     text: text,
     timestamp: serverTimestamp()
   };
@@ -861,22 +908,23 @@ function clearImageAttachment() {
   elements.attachmentPreviewBar.classList.add("hidden");
 }
 
-// Typing Indicator Functionality (DOM Nodes - Safe against XSS)
+// Typing Indicator Functionality (Guarded Path Execution)
 function handleTyping() {
-  if (!currentUser) return;
+  if (!currentUser || !isValidKey(currentRoom?.id) || !isValidKey(currentUser?.uid)) return;
   const typingRef = ref(db, `typing/${currentRoom.id}/${currentUser.uid}`);
-  set(typingRef, { name: currentNickname, time: Date.now() });
+  set(typingRef, { name: stripZalgo(currentNickname).trim() || "User", time: Date.now() });
 
   if (typingTimeout) clearTimeout(typingTimeout);
   typingTimeout = setTimeout(stopTyping, 2000);
 }
 
 function stopTyping() {
-  if (!currentUser) return;
+  if (!currentUser || !isValidKey(currentRoom?.id) || !isValidKey(currentUser?.uid)) return;
   remove(ref(db, `typing/${currentRoom.id}/${currentUser.uid}`));
 }
 
 function listenToTyping(roomId) {
+  if (!isValidKey(roomId)) return;
   if (currentTypingListener) currentTypingListener();
   
   const typingRef = ref(db, `typing/${roomId}`);
@@ -884,7 +932,7 @@ function listenToTyping(roomId) {
     const data = snapshot.val() || {};
     const typers = Object.values(data)
       .filter(t => t.name !== currentNickname && (Date.now() - t.time < 3000))
-      .map(t => stripZalgo(t.name));
+      .map(t => stripZalgo(t.name).trim());
 
     if (typers.length > 0) {
       elements.typingText.textContent = typers.length === 1 
@@ -897,12 +945,12 @@ function listenToTyping(roomId) {
   });
 }
 
-// Create Private Room (XSS Protected)
+// Create Private Room (Strict Key Validation)
 async function handleCreateRoom() {
-  const name = elements.newRoomName.value.trim();
+  const rawName = stripZalgo(elements.newRoomName.value).trim();
   let code = elements.newRoomCode.value.trim().toUpperCase();
 
-  if (!name) {
+  if (!rawName) {
     showToast("Please enter a room name.");
     return;
   }
@@ -911,10 +959,15 @@ async function handleCreateRoom() {
     code = generateRandomCode();
   }
 
+  if (!isValidKey(code)) {
+    showToast("Invalid room code format.");
+    return;
+  }
+
   const roomObj = {
     id: code,
     code: code,
-    name: name,
+    name: rawName,
     isPrivate: true,
     createdBy: currentUser?.uid,
     createdAt: Date.now()
@@ -936,11 +989,11 @@ async function handleCreateRoom() {
   switchRoom(roomObj);
 }
 
-// Join Private Room by Code (XSS Protected)
+// Join Private Room by Code (Strict Key Validation)
 async function joinRoomByCode(codeToJoin) {
   const code = (codeToJoin || elements.joinRoomCodeInput.value).trim().toUpperCase();
-  if (!code) {
-    showToast("Please enter a room code.");
+  if (!code || !isValidKey(code)) {
+    showToast("Please enter a valid room code.");
     return;
   }
 
@@ -1049,17 +1102,19 @@ function setupEventListeners() {
   elements.closeNameModalBtn.addEventListener("click", () => elements.editNameModal.classList.add("hidden"));
   elements.cancelNameModalBtn.addEventListener("click", () => elements.editNameModal.classList.add("hidden"));
   elements.saveNicknameBtn.addEventListener("click", () => {
-    const newName = elements.nicknameInput.value.trim();
-    if (newName) {
-      currentNickname = newName;
-      localStorage.setItem("pulsechat_nickname", currentNickname);
-      updateUserUI();
-      if (currentUser) {
-        set(ref(db, `status/${currentUser.uid}/name`), currentNickname);
-      }
-      elements.editNameModal.classList.add("hidden");
-      showToast("Nickname updated!");
+    const newName = stripZalgo(elements.nicknameInput.value).trim();
+    if (!newName) {
+      showToast("Nickname cannot be empty!");
+      return;
     }
+    currentNickname = newName;
+    localStorage.setItem("pulsechat_nickname", currentNickname);
+    updateUserUI();
+    if (currentUser && isValidKey(currentUser.uid)) {
+      set(ref(db, `status/${currentUser.uid}/name`), currentNickname);
+    }
+    elements.editNameModal.classList.add("hidden");
+    showToast("Nickname updated!");
   });
 
   // Share Buttons & Room Copy
