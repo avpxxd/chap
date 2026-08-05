@@ -463,6 +463,7 @@ h1, h2, h3, h4, .brand-text h2 {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -499,6 +500,7 @@ h1, h2, h3, h4, .brand-text h2 {
   display: flex;
   gap: 14px;
   max-width: 85%;
+  min-width: 0;
   animation: fadeIn 0.25s ease-out;
   cursor: context-menu;
   position: relative;
@@ -533,6 +535,8 @@ h1, h2, h3, h4, .brand-text h2 {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .msg-header {
@@ -549,11 +553,15 @@ h1, h2, h3, h4, .brand-text h2 {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .msg-time {
   font-size: 0.7rem;
   color: var(--text-subtle);
+  flex-shrink: 0;
 }
 
 .msg-bubble {
@@ -565,9 +573,18 @@ h1, h2, h3, h4, .brand-text h2 {
   font-size: 0.93rem;
   line-height: 1.5;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  max-width: 100%;
+  overflow-x: hidden;
   position: relative;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   transition: var(--transition-fast);
+}
+
+.msg-bubble a {
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .message-item:hover .msg-bubble {

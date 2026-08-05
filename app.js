@@ -182,6 +182,14 @@ const elements = {
   membersDrawer: document.getElementById("membersDrawer")
 };
 
+// HTML Escaper to Prevent XSS Attacks
+function escapeHTML(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>'"]/g, 
+    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+  );
+}
+
 // Generate Random 6-char Room Code
 function generateRandomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -192,12 +200,21 @@ function generateRandomCode() {
   return result;
 }
 
-// Show Toast Notification
+// Show Toast Notification (Safe against XSS by using textContent)
 function showToast(message, duration = 3000) {
   const toast = document.createElement("div");
   toast.className = "toast";
-  toast.innerHTML = `<span>✨</span> <span>${message}</span>`;
+  
+  const icon = document.createElement("span");
+  icon.textContent = "✨";
+  
+  const textSpan = document.createElement("span");
+  textSpan.textContent = message;
+
+  toast.appendChild(icon);
+  toast.appendChild(textSpan);
   elements.toastContainer.appendChild(toast);
+
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(100%)';
@@ -260,7 +277,6 @@ function subscribeRoomBackground(room) {
   const messagesRef = ref(db, `messages/${room.id}`);
   let isInitialSync = true;
 
-  // Track initial snapshot to prevent old messages triggering notifications
   get(messagesRef).then(() => {
     isInitialSync = false;
   }).catch(() => {
@@ -272,7 +288,6 @@ function subscribeRoomBackground(room) {
     const msg = snapshot.val();
     if (!msg) return;
 
-    // If message is in another room and sent by another user
     if (room.id !== currentRoom.id && msg.senderId !== currentUser?.uid) {
       unreadCounts[room.id] = (unreadCounts[room.id] || 0) + 1;
       renderPublicRooms();
@@ -319,7 +334,7 @@ function updatePresenceRoom(roomId) {
   set(ref(db, `status/${currentUser.uid}/roomId`), roomId);
 }
 
-// Listen to Active Members in Current Room
+// Listen to Active Members in Current Room (XSS Protected)
 function listenToRoomMembers(roomId) {
   if (activePresenceListener) activePresenceListener();
   
@@ -334,13 +349,17 @@ function listenToRoomMembers(roomId) {
         onlineCount++;
         const item = document.createElement("div");
         item.className = "member-item";
-        const initial = (user.name || "G").charAt(0).toUpperCase();
+        
+        const rawName = user.name || "Anonymous User";
+        const safeName = escapeHTML(rawName);
+        const initial = escapeHTML(rawName.charAt(0).toUpperCase());
+        
         item.innerHTML = `
           <div class="member-avatar-wrapper">
             <div class="member-avatar">${initial}</div>
             <div class="member-status-dot"></div>
           </div>
-          <span class="member-name">${user.name || "Anonymous User"}</span>
+          <span class="member-name">${safeName}</span>
         `;
         elements.membersList.appendChild(item);
       }
@@ -350,7 +369,7 @@ function listenToRoomMembers(roomId) {
   });
 }
 
-// Update User UI
+// Update User UI (XSS Protected)
 function updateUserUI() {
   if (!currentUser) return;
   elements.currentUserName.textContent = currentNickname;
@@ -358,7 +377,7 @@ function updateUserUI() {
   elements.currentUserIdSub.textContent = `ID: ${currentUser.uid.substring(0, 8)}`;
 }
 
-// Render Public Channels List
+// Render Public Channels List (XSS Protected)
 function renderPublicRooms() {
   elements.publicRoomsList.innerHTML = "";
   PUBLIC_ROOMS.forEach(room => {
@@ -367,10 +386,12 @@ function renderPublicRooms() {
     item.onclick = () => switchRoom(room);
     
     const unread = unreadCounts[room.id] || 0;
+    const safeRoomName = escapeHTML(room.name);
+    
     item.innerHTML = `
       <div class="room-item-name">
         <span>${room.icon}</span>
-        <span>${room.name}</span>
+        <span>${safeRoomName}</span>
       </div>
       ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
     `;
@@ -378,7 +399,7 @@ function renderPublicRooms() {
   });
 }
 
-// Render Private Rooms List with Delete Button
+// Render Private Rooms List (XSS Protected)
 function renderPrivateRooms() {
   elements.privateRoomsList.innerHTML = "";
   if (privateRooms.length === 0) {
@@ -392,14 +413,16 @@ function renderPrivateRooms() {
     item.onclick = () => switchRoom(room);
     
     const unread = unreadCounts[room.id] || 0;
+    const safeRoomName = escapeHTML(room.name);
+    
     item.innerHTML = `
       <div class="room-item-name">
         <span>🔒</span>
-        <span>${room.name}</span>
+        <span>${safeRoomName}</span>
       </div>
       <div class="room-actions">
         ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
-        <button class="delete-room-btn" onclick="window.deletePrivateRoom('${room.id}', event)" title="Delete Private Room">🗑️</button>
+        <button class="delete-room-btn" onclick="window.deletePrivateRoom('${escapeHTML(room.id)}', event)" title="Delete Private Room">🗑️</button>
       </div>
     `;
     elements.privateRoomsList.appendChild(item);
@@ -414,11 +437,9 @@ window.deletePrivateRoom = async function(roomId, event) {
     return;
   }
 
-  // Remove from local state
   privateRooms = privateRooms.filter(r => r.id !== roomId);
   localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
 
-  // Clean up RTDB if owner
   try {
     await remove(ref(db, `private_rooms/${roomId}`));
     await remove(ref(db, `messages/${roomId}`));
@@ -429,7 +450,6 @@ window.deletePrivateRoom = async function(roomId, event) {
   showToast(`Deleted private room ${roomId}`);
   playSound('delete');
 
-  // If active room was deleted, switch back to General
   if (currentRoom.id === roomId) {
     switchRoom(PUBLIC_ROOMS[0]);
   } else {
@@ -437,7 +457,7 @@ window.deletePrivateRoom = async function(roomId, event) {
   }
 };
 
-// Switch Active Chat Room (ONLY called on explicit user action)
+// Switch Active Chat Room
 function switchRoom(room) {
   currentRoom = room;
   unreadCounts[room.id] = 0;
@@ -473,7 +493,6 @@ function loadRoomMessages(roomId) {
   const messagesRef = ref(db, `messages/${roomId}`);
 
   activeRoomMessageUnsubscribe = onValue(messagesRef, (snapshot) => {
-    // Make sure snapshot still matches current active room
     if (currentRoom.id !== roomId) return;
 
     const messages = snapshot.val();
@@ -483,7 +502,7 @@ function loadRoomMessages(roomId) {
       elements.messagesContainer.innerHTML = `
         <div class="welcome-message-card">
           <div class="welcome-icon">${currentRoom.icon || '💬'}</div>
-          <h2>Welcome to ${currentRoom.name}</h2>
+          <h2>Welcome to ${escapeHTML(currentRoom.name)}</h2>
           <p>No messages here yet. Right-click any message for reactions, copy, and options!</p>
         </div>
       `;
@@ -504,23 +523,25 @@ function loadRoomMessages(roomId) {
     });
 
     if (searchFilterQuery && !hasMatchedSearch) {
-      elements.messagesContainer.innerHTML = `<div class="empty-rooms-hint" style="text-align: center; padding: 40px;">No messages matched "${searchFilterQuery}".</div>`;
+      elements.messagesContainer.innerHTML = `<div class="empty-rooms-hint" style="text-align: center; padding: 40px;">No messages matched "${escapeHTML(searchFilterQuery)}".</div>`;
     } else {
       elements.messagesContainer.scrollTop = elements.messagesContainer.scrollHeight;
     }
   });
 }
 
-// Render Single Message in Stream
+// Render Single Message in Stream (XSS Protected)
 function renderSingleMessage(msgId, msg) {
   const isOutgoing = msg.senderId === currentUser?.uid;
   const item = document.createElement("div");
   item.className = `message-item ${isOutgoing ? 'outgoing' : ''}`;
   item.id = `msg-${msgId}`;
 
-  const initial = (msg.senderName || "U").charAt(0).toUpperCase();
+  const rawSender = msg.senderName || "User";
+  const safeSender = escapeHTML(rawSender);
+  const initial = escapeHTML(rawSender.charAt(0).toUpperCase());
 
-  // Auto-convert URLs into clickable links
+  // Auto-convert URLs into clickable links safely
   let formattedText = escapeHTML(msg.text || "");
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   formattedText = formattedText.replace(urlRegex, (url) => {
@@ -529,10 +550,10 @@ function renderSingleMessage(msgId, msg) {
 
   let mediaHtml = "";
   if (msg.imageUrl) {
-    mediaHtml = `<img src="${msg.imageUrl}" class="msg-media-preview" alt="Attachment" loading="lazy" />`;
+    mediaHtml = `<img src="${escapeHTML(msg.imageUrl)}" class="msg-media-preview" alt="Attachment" loading="lazy" />`;
   }
 
-  // Reactions HTML
+  // Reactions HTML (XSS Protected)
   let reactionsHtml = "";
   if (msg.reactions) {
     const reactionCounts = {};
@@ -548,8 +569,8 @@ function renderSingleMessage(msgId, msg) {
     reactionsHtml = '<div class="msg-reactions">';
     Object.entries(reactionCounts).forEach(([emoji, count]) => {
       reactionsHtml += `
-        <span class="reaction-chip ${userReacted[emoji] ? 'user-reacted' : ''}" onclick="window.toggleReaction('${msgId}', '${emoji}')">
-          ${emoji} ${count}
+        <span class="reaction-chip ${userReacted[emoji] ? 'user-reacted' : ''}" onclick="window.toggleReaction('${msgId}', '${escapeHTML(emoji)}')">
+          ${escapeHTML(emoji)} ${count}
         </span>
       `;
     });
@@ -560,7 +581,7 @@ function renderSingleMessage(msgId, msg) {
     <div class="msg-avatar">${initial}</div>
     <div class="msg-body">
       <div class="msg-header">
-        <span class="msg-author">${escapeHTML(msg.senderName || "User")}</span>
+        <span class="msg-author">${safeSender}</span>
         <span class="msg-time">${formatTime(msg.timestamp)}</span>
       </div>
       <div class="msg-bubble">
@@ -727,7 +748,7 @@ function clearImageAttachment() {
   elements.attachmentPreviewBar.classList.add("hidden");
 }
 
-// Typing Indicator Functionality
+// Typing Indicator Functionality (XSS Protected)
 function handleTyping() {
   if (!currentUser) return;
   const typingRef = ref(db, `typing/${currentRoom.id}/${currentUser.uid}`);
@@ -750,7 +771,7 @@ function listenToTyping(roomId) {
     const data = snapshot.val() || {};
     const typers = Object.values(data)
       .filter(t => t.name !== currentNickname && (Date.now() - t.time < 3000))
-      .map(t => t.name);
+      .map(t => escapeHTML(t.name));
 
     if (typers.length > 0) {
       elements.typingText.textContent = typers.length === 1 
@@ -763,7 +784,7 @@ function listenToTyping(roomId) {
   });
 }
 
-// Create Private Room
+// Create Private Room (XSS Protected)
 async function handleCreateRoom() {
   const name = elements.newRoomName.value.trim();
   let code = elements.newRoomCode.value.trim().toUpperCase();
@@ -786,10 +807,8 @@ async function handleCreateRoom() {
     createdAt: Date.now()
   };
 
-  // Save private room in Firebase RTDB index so anyone with the code can join
   await set(ref(db, `private_rooms/${code}`), roomObj);
 
-  // Add to local user list if not present
   if (!privateRooms.some(r => r.id === code)) {
     privateRooms.push(roomObj);
     localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
@@ -804,7 +823,7 @@ async function handleCreateRoom() {
   switchRoom(roomObj);
 }
 
-// Join Private Room by Code
+// Join Private Room by Code (XSS Protected)
 async function joinRoomByCode(codeToJoin) {
   const code = (codeToJoin || elements.joinRoomCodeInput.value).trim().toUpperCase();
   if (!code) {
@@ -818,7 +837,6 @@ async function joinRoomByCode(codeToJoin) {
     if (snapshot.exists()) {
       roomObj = snapshot.val();
     } else {
-      // Fallback: create ad-hoc private room object for code
       roomObj = {
         id: code,
         code: code,
@@ -853,13 +871,6 @@ function updateSoundUI() {
     elements.soundOnIcon.classList.remove("hidden");
     elements.soundOffIcon.classList.add("hidden");
   }
-}
-
-// HTML Escaper to Prevent XSS
-function escapeHTML(str) {
-  return str.replace(/[&<>'"]/g, 
-    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
-  );
 }
 
 // Event Listeners Setup
