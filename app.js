@@ -72,6 +72,12 @@ const RATE_LIMIT_WINDOW_MS = 4000;
 const BURST_LIMIT_COUNT = 3;           // Max 3 messages in 2 seconds
 const BURST_LIMIT_WINDOW_MS = 2000;
 
+// Slowmode Punishment Parameters (5 minutes punishment, 1 msg/min restriction)
+const SLOWMODE_PUNISHMENT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const SLOWMODE_COOLDOWN_MS = 60 * 1000;                // 1 msg per 60s
+let slowmodeUntil = parseInt(sessionStorage.getItem("chapp_slowmode_until") || "0", 10);
+let lastSentTimestamp = parseInt(sessionStorage.getItem("chapp_last_sent_time") || "0", 10);
+
 let isCaptchaVerified = (sessionStorage.getItem("chapp_captcha_verified") || sessionStorage.getItem("pulsechat_captcha_verified")) === "true";
 let turnstileWidgetId = null;
 
@@ -104,6 +110,40 @@ function getDomain(url) {
     return parsed.hostname.replace(/^www\./, '');
   } catch (e) {
     return 'Website';
+  }
+}
+
+// Slowmode Punishment Helpers & UI Timer
+function triggerSlowmodePunishment(reason = "spamming") {
+  const now = Date.now();
+  slowmodeUntil = Math.max(slowmodeUntil, now + SLOWMODE_PUNISHMENT_DURATION_MS);
+  sessionStorage.setItem("chapp_slowmode_until", slowmodeUntil.toString());
+
+  const remainingMin = Math.ceil((slowmodeUntil - now) / 60000);
+  showToast(`🚨 Slowmode Punishment: Forced 1 msg/min for ${remainingMin}m due to ${reason}!`, 5000, "fa-solid fa-hourglass-half");
+  playSound('delete');
+  updateSlowmodeUI();
+}
+
+function isUserInSlowmode() {
+  return Date.now() < slowmodeUntil;
+}
+
+function updateSlowmodeUI() {
+  const now = Date.now();
+  const banner = document.getElementById("slowmodeBanner");
+  const timerText = document.getElementById("slowmodeTimerText");
+
+  if (!banner || !timerText) return;
+
+  if (now < slowmodeUntil) {
+    banner.classList.remove("hidden");
+    const remainingSec = Math.ceil((slowmodeUntil - now) / 1000);
+    const min = Math.floor(remainingSec / 60).toString().padStart(2, '0');
+    const sec = (remainingSec % 60).toString().padStart(2, '0');
+    timerText.textContent = `${min}:${sec}`;
+  } else {
+    banner.classList.add("hidden");
   }
 }
 
@@ -430,6 +470,10 @@ async function initApp() {
   renderPublicRooms();
   renderPrivateRooms();
   setupEventListeners();
+
+  // Start Slowmode UI countdown loop
+  setInterval(updateSlowmodeUI, 1000);
+  updateSlowmodeUI();
 
   // Check CAPTCHA verification
   if (!isCaptchaVerified) {
@@ -1181,13 +1225,30 @@ window.toggleReaction = function(msgId, reactionKey) {
   });
 };
 
-// Send Message Logic (Rate Limited, Burst Protected & CAPTCHA Protected)
+// Send Message Logic (Rate Limited, Burst Protected, Slowmode Punished & CAPTCHA Protected)
 async function sendMessage(e) {
   if (e) e.preventDefault();
   
   if (!isCaptchaVerified) {
     promptCaptcha();
     return;
+  }
+
+  const now = Date.now();
+
+  // 1. Check if user is currently under 5-Minute Slowmode Punishment
+  if (isUserInSlowmode()) {
+    const timeSinceLastMsg = now - lastSentTimestamp;
+    if (timeSinceLastMsg < SLOWMODE_COOLDOWN_MS) {
+      const waitSec = Math.ceil((SLOWMODE_COOLDOWN_MS - timeSinceLastMsg) / 1000);
+      const punishmentSec = Math.ceil((slowmodeUntil - now) / 1000);
+      const punishmentMin = Math.floor(punishmentSec / 60);
+      const remainingSecRem = punishmentSec % 60;
+      
+      showToast(`⏳ Slowmode Active: Please wait ${waitSec}s to send. (Punishment expires in ${punishmentMin}m ${remainingSecRem}s)`, 4000, "fa-solid fa-hourglass-half");
+      playSound('delete');
+      return;
+    }
   }
 
   const cleanNick = stripZalgo(currentNickname).trim();
@@ -1198,22 +1259,20 @@ async function sendMessage(e) {
     return;
   }
 
-  const now = Date.now();
+  // 2. Check Spam / Burst Conditions to trigger Slowmode Punishment
   userSendTimestamps = userSendTimestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
 
   // Condition A: Fast burst check (3 messages sent in under 2 seconds)
   const burstTimestamps = userSendTimestamps.filter(t => now - t < BURST_LIMIT_WINDOW_MS);
   if (burstTimestamps.length >= BURST_LIMIT_COUNT - 1) {
-    showToast("⚠️ Fast typing burst detected! Human verification required.", 3000, "fa-solid fa-shield-halved");
-    playSound('delete');
+    triggerSlowmodePunishment("fast typing burst");
     promptCaptcha();
     return;
   }
 
   // Condition B: Overall Rate Limit (10 messages in 4 seconds)
   if (userSendTimestamps.length >= RATE_LIMIT_COUNT) {
-    showToast("⚠️ Rate limit reached (10 msgs / 4s). Human verification required.", 3000, "fa-solid fa-shield-halved");
-    playSound('delete');
+    triggerSlowmodePunishment("rate limit threshold");
     promptCaptcha();
     return;
   }
@@ -1245,6 +1304,9 @@ async function sendMessage(e) {
     };
   }
 
+  // Update timestamps
+  lastSentTimestamp = now;
+  sessionStorage.setItem("chapp_last_sent_time", lastSentTimestamp.toString());
   userSendTimestamps.push(now);
 
   const newMsgRef = push(ref(db, `messages/${currentRoom.id}`));
@@ -1257,6 +1319,7 @@ async function sendMessage(e) {
   window.cancelReply();
   stopTyping();
   playSound('send');
+  updateSlowmodeUI();
 }
 
 // Image File Attachment Handler

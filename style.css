@@ -1029,6 +1029,26 @@ h1, h2, h3, h4, .brand-text h2 {
   background: var(--bg-glass-card);
 }
 
+/* Slowmode Punishment Banner */
+.slowmode-banner {
+  background: rgba(239, 68, 68, 0.15);
+  border-top: 1px solid var(--border);
+  border-left: 3px solid var(--danger);
+  color: #fca5a5;
+  padding: 8px 24px;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.slowmode-banner strong {
+  color: #ffffff;
+  font-family: monospace;
+}
+
 /* Chat Footer & Form */
 .chat-input-footer {
   padding: 16px 24px 20px 24px;
