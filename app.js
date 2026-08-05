@@ -61,13 +61,13 @@ let searchFilterQuery = "";
 let unreadCounts = {};
 let backgroundRoomListeners = {};
 let activeContextMenu = null;
+const linkMetadataCache = {};
 
 // Helper: Validate Database Keys to Prevent Path Traversal & Global Data Deletion Wipes
 function isValidKey(key) {
   if (key === null || key === undefined) return false;
   const str = String(key).trim();
   if (!str) return false;
-  // Disallow path separators, wildcards, and traversal sequences: /, ., #, $, [, ], ..
   if (/[/.\#$\[\]]/.test(str) || str === '..' || str === '.') return false;
   return true;
 }
@@ -76,6 +76,126 @@ function isValidKey(key) {
 function stripZalgo(str) {
   if (str === null || str === undefined) return '';
   return String(str).replace(/[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]/g, '');
+}
+
+// Check if URL is an image/GIF link
+function isMediaUrl(url) {
+  if (!url) return false;
+  if (/\.(gif|jpe?g|png|webp|svg)(\?.*)?$/i.test(url)) return true;
+  if (/media\.giphy\.com|i\.giphy\.com|tenor\.com\/view|i\.imgur\.com/i.test(url)) return true;
+  return false;
+}
+
+function getDomain(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, '');
+  } catch (e) {
+    return 'Website';
+  }
+}
+
+// Fetch Rich Link Preview OpenGraph Metadata
+function fetchLinkPreview(url, previewContainer) {
+  if (linkMetadataCache[url]) {
+    renderLinkPreviewCard(linkMetadataCache[url], previewContainer);
+    return;
+  }
+
+  const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}`;
+  fetch(apiUrl)
+    .then(res => res.json())
+    .then(res => {
+      if (res.status === "success" && res.data) {
+        const domain = getDomain(url);
+        const data = {
+          url: url,
+          title: res.data.title || "",
+          description: res.data.description || "",
+          image: res.data.image?.url || res.data.logo?.url || "",
+          publisher: res.data.publisher || domain,
+          logo: res.data.logo?.url || `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+        };
+        linkMetadataCache[url] = data;
+        renderLinkPreviewCard(data, previewContainer);
+      } else {
+        renderFallbackPreview(url, previewContainer);
+      }
+    })
+    .catch(() => {
+      renderFallbackPreview(url, previewContainer);
+    });
+}
+
+function renderLinkPreviewCard(data, container) {
+  if (!data || (!data.title && !data.description && !data.image)) return;
+  container.innerHTML = "";
+
+  const card = document.createElement("a");
+  card.className = "link-preview-card";
+  card.href = data.url;
+  card.target = "_blank";
+  card.rel = "noopener noreferrer";
+
+  if (data.image && (data.image.startsWith("http://") || data.image.startsWith("https://"))) {
+    const img = document.createElement("img");
+    img.className = "link-preview-image";
+    img.src = data.image;
+    img.alt = "Link preview";
+    img.loading = "lazy";
+    card.appendChild(img);
+  }
+
+  const content = document.createElement("div");
+  content.className = "link-preview-content";
+
+  const header = document.createElement("div");
+  header.className = "link-preview-header";
+
+  if (data.logo) {
+    const favicon = document.createElement("img");
+    favicon.className = "link-preview-favicon";
+    favicon.src = data.logo;
+    favicon.alt = "Favicon";
+    header.appendChild(favicon);
+  }
+
+  const domainSpan = document.createElement("span");
+  domainSpan.className = "link-preview-domain";
+  domainSpan.textContent = data.publisher || getDomain(data.url);
+  header.appendChild(domainSpan);
+
+  content.appendChild(header);
+
+  if (data.title) {
+    const titleEl = document.createElement("div");
+    titleEl.className = "link-preview-title";
+    titleEl.textContent = stripZalgo(data.title);
+    content.appendChild(titleEl);
+  }
+
+  if (data.description) {
+    const descEl = document.createElement("div");
+    descEl.className = "link-preview-desc";
+    descEl.textContent = stripZalgo(data.description);
+    content.appendChild(descEl);
+  }
+
+  card.appendChild(content);
+  container.appendChild(card);
+}
+
+function renderFallbackPreview(url, container) {
+  const domain = getDomain(url);
+  const data = {
+    url: url,
+    title: domain,
+    description: url,
+    image: "",
+    publisher: domain,
+    logo: `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+  };
+  renderLinkPreviewCard(data, container);
 }
 
 // Sound Synthesizer via Web Audio API
@@ -105,7 +225,7 @@ function playSound(type) {
       osc.stop(now + 0.1);
     } else if (type === 'receive') {
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(587.33, now); // D5
+      osc.frequency.setValueAtTime(587.33, now);
       osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
       gain.gain.setValueAtTime(0.2, now);
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
@@ -113,8 +233,8 @@ function playSound(type) {
       osc.stop(now + 0.12);
     } else if (type === 'join') {
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(523.25, now); // C5
-      osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
+      osc.frequency.setValueAtTime(523.25, now);
+      osc.frequency.setValueAtTime(659.25, now + 0.08);
       gain.gain.setValueAtTime(0.12, now);
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
       osc.start(now);
@@ -489,13 +609,11 @@ function renderPrivateRooms() {
 window.deletePrivateRoom = async function(roomId, event) {
   if (event) event.stopPropagation();
 
-  // Guard: Protect against Path Traversal & Global Database Deletion Wipes
   if (!isValidKey(roomId)) {
     console.error("Invalid room ID format for deletion:", roomId);
     return;
   }
 
-  // Guard: Prevent deleting built-in public rooms
   if (PUBLIC_ROOMS.some(p => p.id === roomId)) {
     showToast("Public channels cannot be deleted!");
     return;
@@ -509,7 +627,6 @@ window.deletePrivateRoom = async function(roomId, event) {
   localStorage.setItem("pulsechat_private_rooms", JSON.stringify(privateRooms));
 
   try {
-    // Only delete targeted room node keys
     await remove(ref(db, `private_rooms/${roomId}`));
     await remove(ref(db, `messages/${roomId}`));
   } catch (err) {
@@ -592,10 +709,9 @@ function loadRoomMessages(roomId) {
 
     let hasMatchedSearch = false;
     Object.entries(messages).forEach(([msgId, msg]) => {
-      // Filter out messages from blank/empty users or invalid message objects
       if (!msg || typeof msg !== 'object') return;
       const sender = stripZalgo(msg.senderName).trim();
-      if (!sender) return; // Block empty user messages
+      if (!sender) return;
 
       if (searchFilterQuery) {
         const text = (msg.text || "").toLowerCase();
@@ -621,14 +737,14 @@ function loadRoomMessages(roomId) {
   });
 }
 
-// Render Single Message in Stream (100% DOM Construction - Zero XSS Risk)
+// Render Single Message in Stream (GIF Previews & Rich Link OpenGraph Metadata Cards)
 function renderSingleMessage(msgId, msg) {
   const isOutgoing = msg.senderId === currentUser?.uid;
   const item = document.createElement("div");
   item.className = `message-item ${isOutgoing ? 'outgoing' : ''}`;
   item.id = `msg-${msgId}`;
 
-  // 1. Avatar (textContent DOM node - safe against unclosed tag parsing)
+  // 1. Avatar
   const rawSender = stripZalgo(msg.senderName).trim() || "User";
   const initial = (rawSender.charAt(0) || "U").toUpperCase();
   
@@ -640,13 +756,13 @@ function renderSingleMessage(msgId, msg) {
   const body = document.createElement("div");
   body.className = "msg-body";
 
-  // 3. Header (Author + Time textNodes)
+  // 3. Header
   const header = document.createElement("div");
   header.className = "msg-header";
 
   const author = document.createElement("span");
   author.className = "msg-author";
-  author.textContent = rawSender; // 100% plain text node! Zero XSS!
+  author.textContent = rawSender;
 
   const time = document.createElement("span");
   time.className = "msg-time";
@@ -655,7 +771,7 @@ function renderSingleMessage(msgId, msg) {
   header.appendChild(author);
   header.appendChild(time);
 
-  // 4. Bubble Container (Text + Safe Links + Media)
+  // 4. Bubble Container (Text + GIF previews + Safe Hyperlinks)
   const bubble = document.createElement("div");
   bubble.className = "msg-bubble";
 
@@ -663,20 +779,42 @@ function renderSingleMessage(msgId, msg) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   let lastIndex = 0;
   let match;
+  const siteUrlsToPreview = [];
 
   while ((match = urlRegex.exec(rawText)) !== null) {
+    const url = match[0];
     if (match.index > lastIndex) {
       bubble.appendChild(document.createTextNode(rawText.substring(lastIndex, match.index)));
     }
     
-    const a = document.createElement("a");
-    a.href = match[0];
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.style.color = "#818cf8";
-    a.style.textDecoration = "underline";
-    a.textContent = match[0]; // Pure text content!
-    bubble.appendChild(a);
+    if (isMediaUrl(url)) {
+      // Direct GIF or Image URL -> Render inline media element
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+
+      const gifImg = document.createElement("img");
+      gifImg.src = url;
+      gifImg.className = "gif-inline-preview";
+      gifImg.alt = "GIF preview";
+      gifImg.loading = "lazy";
+
+      a.appendChild(gifImg);
+      bubble.appendChild(a);
+    } else {
+      // Website link -> Render text hyperlink + queue Rich Link Preview Card
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.style.color = "#818cf8";
+      a.style.textDecoration = "underline";
+      a.textContent = url;
+      bubble.appendChild(a);
+
+      siteUrlsToPreview.push(url);
+    }
 
     lastIndex = urlRegex.lastIndex;
   }
@@ -697,7 +835,15 @@ function renderSingleMessage(msgId, msg) {
   body.appendChild(header);
   body.appendChild(bubble);
 
-  // 5. Reactions (textContent DOM nodes)
+  // 5. Rich Link Preview Card Container
+  if (siteUrlsToPreview.length > 0) {
+    const previewContainer = document.createElement("div");
+    previewContainer.className = "link-preview-container";
+    body.appendChild(previewContainer);
+    fetchLinkPreview(siteUrlsToPreview[0], previewContainer);
+  }
+
+  // 6. Reactions
   if (msg.reactions) {
     const reactionCounts = {};
     const userReacted = {};
@@ -809,7 +955,7 @@ window.copyMessageText = function(msgId) {
   dismissContextMenu();
 };
 
-// Delete Message Function (Strict Guarded Removal)
+// Delete Message Function
 window.deleteMessage = async function(msgId) {
   if (!currentUser) return;
   if (!isValidKey(currentRoom?.id) || !isValidKey(msgId)) {
@@ -841,7 +987,7 @@ window.toggleReaction = function(msgId, emoji) {
   });
 };
 
-// Send Message Logic (Strict Empty User & Empty Message Guards)
+// Send Message Logic
 async function sendMessage(e) {
   if (e) e.preventDefault();
   
@@ -908,7 +1054,7 @@ function clearImageAttachment() {
   elements.attachmentPreviewBar.classList.add("hidden");
 }
 
-// Typing Indicator Functionality (Guarded Path Execution)
+// Typing Indicator Functionality
 function handleTyping() {
   if (!currentUser || !isValidKey(currentRoom?.id) || !isValidKey(currentUser?.uid)) return;
   const typingRef = ref(db, `typing/${currentRoom.id}/${currentUser.uid}`);
@@ -945,7 +1091,7 @@ function listenToTyping(roomId) {
   });
 }
 
-// Create Private Room (Strict Key Validation)
+// Create Private Room
 async function handleCreateRoom() {
   const rawName = stripZalgo(elements.newRoomName.value).trim();
   let code = elements.newRoomCode.value.trim().toUpperCase();
@@ -989,7 +1135,7 @@ async function handleCreateRoom() {
   switchRoom(roomObj);
 }
 
-// Join Private Room by Code (Strict Key Validation)
+// Join Private Room by Code
 async function joinRoomByCode(codeToJoin) {
   const code = (codeToJoin || elements.joinRoomCodeInput.value).trim().toUpperCase();
   if (!code || !isValidKey(code)) {
